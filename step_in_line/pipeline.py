@@ -14,10 +14,10 @@
 from __future__ import absolute_import
 
 import logging
-from typing import Sequence, Optional
+from typing import Sequence, Optional, List, Callable
 import networkx as nx
 from .step import Step
-from stepfunctions.steps import LambdaStep, Chain, Retry, Parallel
+from stepfunctions.steps import LambdaStep, Chain, Retry, Parallel, Graph
 from stepfunctions.workflow import Workflow
 
 logger = logging.getLogger(__name__)
@@ -29,11 +29,13 @@ def crawl_back(graph: nx.DiGraph, step: Step):
         crawl_back(graph, dependency)
 
 
-def convert_step_to_lambda(step: Step) -> LambdaStep:
+def convert_step_to_lambda(
+    step: Step, generate_step_name: Callable[[Step], str]
+) -> LambdaStep:
     lambda_state = LambdaStep(
         state_id=step.name,
         parameters={
-            "FunctionName": step.name,  # is this the ARN?
+            "FunctionName": generate_step_name(step),  # is this the ARN?
             "Payload": {"input": "HelloWorld"},
         },
     )
@@ -49,11 +51,16 @@ def convert_step_to_lambda(step: Step) -> LambdaStep:
     return lambda_state
 
 
-class PipelineG:
+def default_lambda_name(s: Step) -> str:
+    return "${aws_lambda_function." + s.name + "lambda.arn}"
+
+
+class Pipeline:
     def __init__(
         self,
         name: str = "",
         steps: Optional[Sequence[Step]] = None,
+        generate_step_name: Callable[[Step], str] = default_lambda_name,
     ):
         """Initialize a Pipeline
 
@@ -69,25 +76,32 @@ class PipelineG:
         self.name = name
         self.steps = steps if steps else []
         self.graph = nx.DiGraph()
+        self.generate_step_name = generate_step_name
         for step in steps:
             crawl_back(self.graph, step)
         if not nx.is_directed_acyclic_graph(self.graph):
             raise ValueError("Cycle detected in pipeline step graph.")
 
-    def generate_step_functions(self) -> dict:
-        dag = []
+    def get_steps(self) -> List[Step]:
+        return self.graph.nodes
+
+    def generate_step_functions(self) -> Graph:
+        dag_lambda = []
         for index, layer in enumerate(nx.topological_generations(self.graph)):
             if len(layer) == 1:
-                dag.append(convert_step_to_lambda(layer[0]))
+                dag_lambda.append(
+                    convert_step_to_lambda(layer[0], self.generate_step_name)
+                )
             else:
                 parallel_state = Parallel(f"parallel at {index}")
                 for step in layer:
-                    parallel_state.add_branch(convert_step_to_lambda(step))
-                dag.append(parallel_state)
-        chain = Chain(dag)
+                    parallel_state.add_branch(
+                        convert_step_to_lambda(step, self.generate_step_name)
+                    )
+                dag_lambda.append(parallel_state)
+        chain = Chain(dag_lambda)
         workflow = Workflow(name=self.name, definition=chain, role="doesnotmatter")
         return workflow.definition
 
-    def generate_lambda_functions(self):
-        ## generate tf for lambdas
-        return
+    def set_generate_step_name(self, generate_step_name: Callable[[Step], str]):
+        self.generate_step_name = generate_step_name

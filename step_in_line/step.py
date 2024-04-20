@@ -14,35 +14,19 @@
 """The `Step` definitions for SageMaker Pipelines Workflows."""
 from __future__ import absolute_import
 
-import abc
 
 from enum import Enum
-from typing import Dict, List, Union, Optional, Any
+from typing import Dict, List, Union, Optional
 
-from enum import EnumMeta
 from .entities import RequestType
 from .utilities import unique_name_from_base_uuid4
-import attr
 from functools import wraps
 
 
 class StepTypeEnum(Enum):
     """Enum of `Step` types."""
 
-    CONDITION = "Condition"
-    CREATE_MODEL = "Model"
-    PROCESSING = "Processing"
-    REGISTER_MODEL = "RegisterModel"
-    TRAINING = "Training"
-    TRANSFORM = "Transform"
-    CALLBACK = "Callback"
-    TUNING = "Tuning"
     LAMBDA = "Lambda"
-    QUALITY_CHECK = "QualityCheck"
-    CLARIFY_CHECK = "ClarifyCheck"
-    EMR = "EMR"
-    FAIL = "Fail"
-    AUTOML = "AutoML"
 
 
 class Step:
@@ -53,6 +37,7 @@ class Step:
         name: str,
         description: Optional[str] = None,
         retry_count: Optional[int] = 0,
+        layers: List[str] = [],
         step_type: StepTypeEnum = None,  # should only be lambda for Step Functions
         depends_on: Optional[List[Union[str, "Step"]]] = None,
     ):
@@ -70,6 +55,7 @@ class Step:
         self.description = description
         self.step_type = step_type
         self.retry_count = retry_count
+        self.layers = layers
         if depends_on is not None:
             self._depends_on = depends_on
         else:
@@ -92,31 +78,11 @@ class Step:
         else:
             self._depends_on = None
 
-    @property
-    @abc.abstractmethod
-    def arguments(self) -> RequestType:
-        """The arguments to the particular `Step` service call."""
-
-    @property
-    def step_only_arguments(self) -> RequestType:
-        """The arguments to this Step only.
-
-        Compound Steps such as the ConditionStep will have to
-        override this method to return arguments pertaining to only that step.
-        """
-        return self.arguments
-
-    @property
-    @abc.abstractmethod
-    def properties(self):
-        """The properties of the particular `Step`."""
-
     def to_request(self) -> RequestType:
         """Gets the request structure for workflow service calls."""
         request_dict = {
             "Name": self.name,
             "Type": self.step_type.value,
-            "Arguments": self.arguments,
         }
         if self.depends_on:
             request_dict["DependsOn"] = list(self.depends_on)
@@ -148,7 +114,6 @@ def step(
     name: Optional[str] = None,
     description: Optional[str] = None,
     layers: Optional[List[str]] = None,
-    environment_variables: Optional[Dict[str, str]] = None,
     retry_count: int = 0
 ):
     """Decorator for converting a python function to a pipeline step.
@@ -195,6 +160,8 @@ def step(
                 name=_name,
                 step_type=StepTypeEnum.LAMBDA,
                 depends_on=list(depends_on.values()),
+                retry_count=retry_count,
+                layers=layers,
             )
 
         return wrapper

@@ -1,5 +1,5 @@
 from step_in_line.step import step
-from step_in_line.pipeline import PipelineG
+from step_in_line.pipeline import Pipeline
 
 
 def test_pipeline_creates_step_dag():
@@ -26,14 +26,5 @@ def test_pipeline_creates_step_dag():
         step_process_result, step_process_result_2, step_process_result_3
     )
 
-    pipe = PipelineG("mytest", steps=[step_train_result])
-    pipe.generate_step_functions()
-    # this works if everything needs to happen sequentially, but not efficient if things can run in parallel
-    # print(list(nx.topological_sort(pipe.graph)))
-    # print(list(nx.topological_sort(nx.line_graph(pipe.graph))))
-
-    ## to actually get by "index" or "Depth"
-    # print("TOP GENERATIONS")
-    # print(list(nx.topological_generations(pipe.graph)))
-
-    assert False
+    pipe = Pipeline("mytest", steps=[step_train_result])
+    assert len(pipe.generate_step_functions().states.keys()) == 3
