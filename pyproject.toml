@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "step-in-line"
+version = "0.1.0"
+description = ""
+authors = ["Daniel Stahl <danstahl1138@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+attrs = "^23.2.0"
+networkx = "3.2.1"
+stepfunctions = "^2.3.0"
+cdktf = "^0.20.7"
+cdktf-cdktf-provider-aws = "^19.15.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.1.1"
