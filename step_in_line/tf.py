@@ -56,6 +56,7 @@ def generate_lambda_function(
         function_name=step.name,
         role=lambda_role.arn,
         filename=zip_name,
+        timeout=900,
         runtime="python3.10",
         handler="index.lambda_handler",
         vpc_config={"subnet_ids": subnet_ids, "security_group_ids": security_group_ids},

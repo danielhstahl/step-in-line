@@ -19,7 +19,7 @@ def preprocess(arg1: str) -> str:
     # do stuff here, eg run some sql code against snowflake.  
     # Make sure to "import snowflake" within this function.  
     # Will need a "layer" passed which contains the snowflake
-    # dependencies
+    # dependencies.  Must run in <15 minutes.
     return "hello"
 
 @step
@@ -27,7 +27,7 @@ def preprocess_2(arg1: str) -> str:
     # do stuff here, eg run some sql code against snowflake.  
     # Make sure to "import snowflake" within this function.  
     # Will need a "layer" passed which contains the snowflake
-    # dependencies
+    # dependencies.  Must run in <15 minutes.
     return "hello"
 
 @step
@@ -35,7 +35,7 @@ def preprocess_3(arg1: str) -> str:
     # do stuff here, eg run some sql code against snowflake.  
     # Make sure to "import snowflake" within this function.  
     # Will need a "layer" passed which contains the snowflake
-    # dependencies
+    # dependencies. Must run in <15 minutes.
     return "hello"
 
 @step
@@ -43,7 +43,7 @@ def train(arg2: str):
     # do stuff here, eg run some sql code against snowflake.  
     # Make sure to "import snowflake" within this function.  
     # Will need a "layer" passed which contains the snowflake
-    # dependencies
+    # dependencies.  Must run in <15 minutes.
     return "goodbye"
 
 step_process_result = preprocess("hi")
