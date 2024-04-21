@@ -114,10 +114,8 @@ def step(
     """
 
     def _step(func):
-
         @wraps(func)
         def wrapper(*args, **kwargs):
-
             depends_on = {}
             arg_list = []
             for arg in list(args) + list(kwargs.values()):

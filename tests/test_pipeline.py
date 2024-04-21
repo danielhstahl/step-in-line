@@ -56,8 +56,7 @@ def test_pipeline_runs_locally():
 
     pipe = Pipeline("mytest", steps=[step_train_result])
     results = pipe.local_run()
-    outputs = results.values()
-    assert "hello1" in outputs
-    assert "hello2" in outputs
-    assert "hello3" in outputs
-    assert "goodbye" in outputs
+    assert "hello1" == results[0][0][1]
+    assert "hello2" == results[1][0][1]
+    assert "hello3" == results[1][1][1]
+    assert "goodbye" == results[2][0][1]

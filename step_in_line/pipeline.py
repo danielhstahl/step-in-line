@@ -14,7 +14,7 @@
 from __future__ import absolute_import
 
 import logging
-from typing import Sequence, Optional, List, Callable, Dict, Any
+from typing import Sequence, Optional, List, Callable, Dict, Any, Tuple
 import networkx as nx
 from .step import Step
 from stepfunctions.steps import LambdaStep, Chain, Retry, Parallel, Graph
@@ -109,9 +109,11 @@ class Pipeline:
     def set_generate_step_name(self, generate_step_name: Callable[[Step], str]):
         self.generate_step_name = generate_step_name
 
-    def local_run(self) -> Dict[str, Any]:
+    def local_run(self) -> List[List[Tuple[str, Any]]]:
         outputs = {}
+        output_arr = []
         for layer in self.generate_layers():
+            layer_output = []
             for step in layer:
                 args = []
                 for arg in step.args:
@@ -120,4 +122,6 @@ class Pipeline:
                     else:
                         args.append(arg)
                 outputs[step.name] = step.func(*args)
-        return outputs
+                layer_output.append((step.name, outputs[step.name]))
+            output_arr.append(layer_output)
+        return output_arr

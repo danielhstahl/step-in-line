@@ -6,7 +6,7 @@ from cdktf import (
 )
 from cdktf_cdktf_provider_aws.provider import AwsProvider
 from cdktf_cdktf_provider_aws import lambda_function
-from cdktf_cdktf_provider_aws import sfn_state_machine
+from cdktf_cdktf_provider_aws import sfn_state_machine, iam_role
 from cdktf_cdktf_provider_aws import (
     data_aws_subnets,
     security_group,
@@ -14,36 +14,86 @@ from cdktf_cdktf_provider_aws import (
 from .step import Step, step
 from .pipeline import Pipeline
 from typing import List, Union
+import json
+import zipfile
+import dill
 
 
 def generate_lambda_function(
     scope: Construct, step: Step, subnet_ids: List[str], security_group_ids: List[str]
 ):
+    role = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": "sts:AssumeRole",
+                "Principal": {"Service": ["lambda.amazonaws.com"]},
+            }
+        ],
+    }
+    with open("myfunc.pickle", "wb") as f:
+        dill.dump(step, f)
+    zip_name = f"{step.name}.zip"
+    lambda_source_code = "step_in_line/template_lambda.py"
+
+    zf = zipfile.ZipFile(zip_name, mode="w")
+    zf.write(lambda_source_code, arcname=lambda_source_code.split("/")[-1])
+    zf.write("myfunc.pickle")
+    zf.close()
+
+    lambda_role = iam_role.IamRole(
+        scope,
+        id_=step.name + "role",
+        id=step.name + "role",
+        assume_role_policy=json.dumps(role),
+        name_prefix=step.name,
+    )
     return lambda_function.LambdaFunction(
         scope,
         id=step.name,
         id_=step.name,
         function_name=step.name,
-        role="somerole",
-        handler="somehandler",
+        role=lambda_role.arn,
+        filename=zip_name,
+        handler="lambda_handler",
         vpc_config={"subnet_ids": subnet_ids, "security_group_ids": security_group_ids},
         layers=step.layers,
     )
 
 
-def generate_step_function(scope: Construct, pipeline: Pipeline):
+def generate_step_function(
+    scope: Construct, pipeline: Pipeline, lambda_arns: List[str]
+):
+    role = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": ["lambda:InvokeFunction"],
+                "Resource": lambda_arns,
+            },
+        ],
+    }
+    stepfunction_role = iam_role.IamRole(
+        scope,
+        id_=pipeline.name + "role",
+        id=pipeline.name + "role",
+        assume_role_policy=json.dumps(role),
+        name_prefix=pipeline.name,
+    )
     sfn_state_machine.SfnStateMachine(
         scope=scope,
         id_=pipeline.name,
         id=pipeline.name,
-        role_arn="tbd",
+        role_arn=stepfunction_role.arn,
         name=pipeline.name,
         type="STANDARD",
         definition=pipeline.generate_step_functions().to_json(),
     )
 
 
-class MyStack(TerraformStack):
+class StepInLine(TerraformStack):
     def __init__(
         self,
         scope: Construct,
@@ -84,12 +134,12 @@ class MyStack(TerraformStack):
             step_to_lambda_tf[step.name] = step_lambda.arn
 
         pipeline.set_generate_step_name(lambda s: step_to_lambda_tf[s.name])
-        generate_step_function(self, pipeline)
+        generate_step_function(self, pipeline, list(step_to_lambda_tf.values()))
 
 
-## temporary, for testing
+## example, for testing
 def main():
-    app = App(hcl_output=True)  # not sure what hcl_output does...
+    app = App(hcl_output=True)
 
     @step
     def preprocess(arg1: str) -> str:
@@ -115,13 +165,6 @@ def main():
     )
 
     pipe = Pipeline("mytest", steps=[step_train_result])
-    stack = MyStack(app, "aws_instance", pipe, "myvpc", "us-east-1", [])
-
-    # RemoteBackend(
-    #    stack,
-    #    hostname="app.terraform.io",
-    #    organization="<YOUR_ORG>",
-    #    workspaces=NamedRemoteWorkspace("learn-cdktf"),
-    # )
+    stack = StepInLine(app, "aws_instance", pipe, "myvpc", "us-east-1", [])
 
     app.synth()
