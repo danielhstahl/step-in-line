@@ -2,10 +2,16 @@
 
 Step functions are awesome.  It is a fully managed serverless AWS offering, so there is no upkeep or maintenance required.  Unfortunately, programatically created workflows of Lambda functions requires creating complex JSON definitions.  This library generates these JSON definitions automatically from Python decorators.  In addition, it generates the Lambda functions for each Python function.  
 
+The API is intentionally similar to the Sagemaker Pipeline API.  
+
 ## Usage
 
 ```python
 from cdktf import App
+from step_in_line.step import step
+from step_in_line.pipeline import Pipeline
+from step_in_line.tf import StepInLine
+
 app = App(hcl_output=True)
 
 @step(layers=["arn:aws:lambda:us-east-2:123456789012:layer:example-layer"])
