@@ -38,7 +38,7 @@ def generate_lambda_function(
     lambda_source_code = "step_in_line/template_lambda.py"
 
     zf = zipfile.ZipFile(zip_name, mode="w")
-    zf.write(lambda_source_code, arcname=lambda_source_code.split("/")[-1])
+    zf.write(lambda_source_code, arcname="index.py")
     zf.write("myfunc.pickle")
     zf.close()
 
@@ -56,7 +56,8 @@ def generate_lambda_function(
         function_name=step.name,
         role=lambda_role.arn,
         filename=zip_name,
-        handler="lambda_handler",
+        runtime="python3.10",
+        handler="index.lambda_handler",
         vpc_config={"subnet_ids": subnet_ids, "security_group_ids": security_group_ids},
         layers=step.layers,
     )
