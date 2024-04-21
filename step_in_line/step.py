@@ -15,18 +15,10 @@
 from __future__ import absolute_import
 
 
-from enum import Enum
-from typing import Dict, List, Union, Optional
+from typing import List, Optional, Callable, Any
 
-from .entities import RequestType
 from .utilities import unique_name_from_base_uuid4
 from functools import wraps
-
-
-class StepTypeEnum(Enum):
-    """Enum of `Step` types."""
-
-    LAMBDA = "Lambda"
 
 
 class Step:
@@ -35,11 +27,12 @@ class Step:
     def __init__(
         self,
         name: str,
+        func: Callable,
+        args: List[Any],
         description: Optional[str] = None,
         retry_count: Optional[int] = 0,
         layers: List[str] = [],
-        step_type: StepTypeEnum = None,  # should only be lambda for Step Functions
-        depends_on: Optional[List[Union[str, "Step"]]] = None,
+        depends_on: Optional[List["Step"]] = None,
     ):
         """Initialize a Step
 
@@ -53,9 +46,10 @@ class Step:
         """
         self.name = name
         self.description = description
-        self.step_type = step_type
         self.retry_count = retry_count
         self.layers = layers
+        self.func = func
+        self.args = args
         if depends_on is not None:
             self._depends_on = depends_on
         else:
@@ -64,13 +58,13 @@ class Step:
     @property
     def depends_on(
         self,
-    ) -> Optional[List[Union[str, "Step"]]]:
+    ) -> Optional[List["Step"]]:
         """The list of steps the current `Step` depends on."""
 
         return self._depends_on
 
     @depends_on.setter
-    def depends_on(self, depends_on: List[Union[str, "Step"]]):
+    def depends_on(self, depends_on: List["Step"]):
         """Set the list of  steps the current step explicitly depends on."""
 
         if depends_on is not None:
@@ -78,20 +72,7 @@ class Step:
         else:
             self._depends_on = None
 
-    def to_request(self) -> RequestType:
-        """Gets the request structure for workflow service calls."""
-        request_dict = {
-            "Name": self.name,
-            "Type": self.step_type.value,
-        }
-        if self.depends_on:
-            request_dict["DependsOn"] = list(self.depends_on)
-        if self.description:
-            request_dict["Description"] = self.description
-
-        return request_dict
-
-    def add_depends_on(self, step_names: List[Union[str, "Step"]]):
+    def add_depends_on(self, step_names: List["Step"]):
         """Add `Step` names or `Step` instances to the current `Step` depends on list."""
 
         if not step_names:
@@ -101,11 +82,6 @@ class Step:
             self._depends_on = []
 
         self._depends_on.extend(step_names)
-
-    @property
-    def ref(self) -> Dict[str, str]:
-        """Gets a reference dictionary for `Step` instances."""
-        return {"Name": self.name}
 
 
 def step(
@@ -143,10 +119,11 @@ def step(
         def wrapper(*args, **kwargs):
 
             depends_on = {}
+            arg_list = []
             for arg in list(args) + list(kwargs.values()):
                 if isinstance(arg, Step):
                     depends_on[id(arg)] = arg
-
+                arg_list.append(arg)
             # setup default values for name, display_name and description if not provided
 
             _name = unique_name_from_base_uuid4(func.__name__) if not name else name
@@ -158,10 +135,11 @@ def step(
                 )
             return Step(
                 name=_name,
-                step_type=StepTypeEnum.LAMBDA,
                 depends_on=list(depends_on.values()),
                 retry_count=retry_count,
                 layers=layers,
+                func=func,
+                args=arg_list,
             )
 
         return wrapper

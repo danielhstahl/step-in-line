@@ -14,7 +14,7 @@
 from __future__ import absolute_import
 
 import logging
-from typing import Sequence, Optional, List, Callable
+from typing import Sequence, Optional, List, Callable, Dict, Any
 import networkx as nx
 from .step import Step
 from stepfunctions.steps import LambdaStep, Chain, Retry, Parallel, Graph
@@ -35,8 +35,8 @@ def convert_step_to_lambda(
     lambda_state = LambdaStep(
         state_id=step.name,
         parameters={
-            "FunctionName": generate_step_name(step),  # is this the ARN?
-            "Payload": {"input": "HelloWorld"},
+            "FunctionName": generate_step_name(step),  # the function arn
+            "Payload.$": "$",
         },
     )
     if step.retry_count > 0:
@@ -85,9 +85,12 @@ class Pipeline:
     def get_steps(self) -> List[Step]:
         return self.graph.nodes
 
+    def generate_layers(self) -> List[List[Step]]:
+        return list(nx.topological_generations(self.graph))
+
     def generate_step_functions(self) -> Graph:
         dag_lambda = []
-        for index, layer in enumerate(nx.topological_generations(self.graph)):
+        for index, layer in enumerate(self.generate_layers()):
             if len(layer) == 1:
                 dag_lambda.append(
                     convert_step_to_lambda(layer[0], self.generate_step_name)
@@ -105,3 +108,16 @@ class Pipeline:
 
     def set_generate_step_name(self, generate_step_name: Callable[[Step], str]):
         self.generate_step_name = generate_step_name
+
+    def local_run(self) -> Dict[str, Any]:
+        outputs = {}
+        for layer in self.generate_layers():
+            for step in layer:
+                args = []
+                for arg in step.args:
+                    if isinstance(arg, Step):
+                        args.append(outputs[arg.name])
+                    else:
+                        args.append(arg)
+                outputs[step.name] = step.func(*args)
+        return outputs
