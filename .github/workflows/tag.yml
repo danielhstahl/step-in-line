@@ -8,6 +8,9 @@ concurrency:
   group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
   cancel-in-progress: true
 
+permissions:
+  id-token: write
+  
 jobs:
   check-code:
     if: ${{ !github.event.pull_request.draft }}
@@ -27,7 +30,7 @@ jobs:
 
       - name: Generate Semantic Version
         id: semver
-        uses: rapidstack/PR-Label-Semver-Action@v1
+        uses: rapidstack/PR-Label-Semver-Action@v1.3.5
 
       - name: Create Git Tag
         uses: actions/github-script@v5
