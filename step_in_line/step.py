@@ -15,7 +15,7 @@ from __future__ import absolute_import
 
 from typing import List, Optional, Callable, Any, Dict
 
-from .utilities import unique_name_from_base_uuid4
+# from .utilities import unique_name_from_base_uuid4
 from functools import wraps
 
 
@@ -27,6 +27,7 @@ class Step:
         name: str,
         func: Callable,
         args: List[Any],
+        python_runtime: str,
         description: Optional[str] = None,
         retry_count: int = 0,
         layers: List[str] = [],
@@ -39,6 +40,7 @@ class Step:
             name (str): The name of the `Step`.
             func (callable): The function that should be executed as part of this step
             args (list): The arguments to the function.  If not a step, these are considered "static" and are used even in the Step Function execution
+            python_runtime (str): Lambda runtime.
             description (str): The description of the `Step`.
             retry_count (int): Number of times to retry a failure
             layers (list): the ARNs of layers to add to the lambda function
@@ -51,6 +53,7 @@ class Step:
         self.layers = layers
         self.func = func
         self.args = args
+        self.python_runtime = python_runtime
         self.env_variables = env_variables
         if depends_on is not None:
             self._depends_on = depends_on
@@ -92,6 +95,7 @@ def step(
     name: Optional[str] = None,
     description: Optional[str] = None,
     layers: Optional[List[str]] = None,
+    python_runtime: str = "python3.10",
     retry_count: int = 0,
     env_variables: Dict[str, str] = {}
 ):
@@ -121,7 +125,7 @@ def step(
                 arg_list.append(arg)
             # setup default values for name, display_name and description if not provided
 
-            _name = unique_name_from_base_uuid4(func.__name__) if not name else name
+            _name = func.__name__ if not name else name
 
             _description = description
             if not _description:
@@ -133,6 +137,7 @@ def step(
                 depends_on=list(depends_on.values()),
                 retry_count=retry_count,
                 layers=layers,
+                python_runtime=python_runtime,
                 func=func,
                 args=arg_list,
                 env_variables=env_variables,

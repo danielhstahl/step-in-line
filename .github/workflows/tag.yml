@@ -1,0 +1,50 @@
+name: Tag
+on:
+  pull_request:
+    types:
+      [
+        assigned,
+        labeled,
+        unlabeled,
+        opened,
+        synchronize,
+        reopened,
+        ready_for_review,
+        closed,
+      ]
+
+# Allow a subsequently queued workflow run to interrupt a previous run
+concurrency:
+  group: "${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+
+jobs:
+  check-code:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Generate Semantic Version
+        id: semver
+        uses: rapidstack/PR-Label-Semver-Action@v1.3.5
+
+      - name: Create Git Tag
+        uses: actions/github-script@v5
+        env:
+          TAG: ${{ steps.semver.outputs.string }}
+        with:
+          script: |
+            const { TAG } = process.env
+            github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `refs/tags/v${TAG}`,
+              sha: context.sha
+            })

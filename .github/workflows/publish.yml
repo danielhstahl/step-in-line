@@ -1,0 +1,22 @@
+name: publish
+on:
+  release:
+    types: [published]
+env:
+  POETRY_VERSION: 1.8.2
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      - name: config-token
+        run: poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
+      - name: Publish to PyPI
+        run: |
+          echo "${{ github.event.release.tag_name }}""
+          poetry version ${{ github.event.release.tag_name }}
+          poetry publish --build

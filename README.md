@@ -14,7 +14,13 @@ from step_in_line.tf import StepInLine, rename_tf_output
 
 app = App(hcl_output=True)
 
-@step(layers=["arn:aws:lambda:us-east-2:123456789012:layer:example-layer"])
+# function names must be unique, or you can pass a name to the step to 
+# ensure uniqueness
+@step(
+    name = "preprocess_unique",
+    python_runtime = "python3.9", # defaults to 3.10
+    layers = ["arn:aws:lambda:us-east-2:123456789012:layer:example-layer"]
+)
 def preprocess(arg1: str) -> str:
     # do stuff here, eg run some sql code against snowflake.  
     # Make sure to "import snowflake" within this function.  
@@ -39,7 +45,7 @@ def preprocess_3(arg1: str) -> str:
     return "hello"
 
 @step
-def train(arg2: str):
+def train(arg1: str, arg2: str, arg3: str) -> str:
     # do stuff here, eg run some sql code against snowflake.  
     # Make sure to "import snowflake" within this function.  
     # Will need a "layer" passed which contains the snowflake
@@ -60,6 +66,9 @@ pipe = Pipeline("mytest", steps=[step_train_result], schedule="rate(2 minutes)")
 
 # to run locally
 print(pipe.local_run()) # will print output of each step
+
+# to extract the step function definition
+print(pipeline.generate_step_functions().to_json())
 
 # generate terraform json including step function code and lambdas
 instance_name = "aws_instance"
