@@ -61,9 +61,15 @@ pipe = Pipeline("mytest", steps=[step_train_result])
 print(pipe.local_run()) # will print output of each step
 
 # generate terraform json including step function code and lambdas
-stack = StepInLine(app, "aws_instance", pipe, "myvpc", "us-east-1", [])
+stack = StepInLine(app, "aws_instance", pipe, "us-east-1")
 
 # write the terraform json for use by `terraform apply`
 app.synth()
 
+```
+
+```bash
+## possibly doesn't need -chdir for `init`
+terraform -chdir=cdktf.out/stacks/aws_instance init
+terraform -chdir=cdktf.out/stacks/aws_instance apply
 ```

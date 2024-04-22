@@ -13,14 +13,17 @@ from cdktf_cdktf_provider_aws import (
 )
 from .step import Step, step
 from .pipeline import Pipeline
-from typing import List, Union
+from typing import List, Union, Optional
 import json
 import zipfile
 import dill
 
 
 def generate_lambda_function(
-    scope: Construct, step: Step, subnet_ids: List[str], security_group_ids: List[str]
+    scope: Construct,
+    step: Step,
+    subnet_ids: Optional[List[str]] = None,
+    security_group_ids: Optional[List[str]] = None,
 ):
     role = {
         "Version": "2012-10-17",
@@ -49,6 +52,11 @@ def generate_lambda_function(
         assume_role_policy=json.dumps(role),
         name_prefix=step.name,
     )
+    vpc_config = (
+        None
+        if subnet_ids is None
+        else {"subnet_ids": subnet_ids, "security_group_ids": security_group_ids}
+    )
     return lambda_function.LambdaFunction(
         scope,
         id=step.name,
@@ -59,7 +67,7 @@ def generate_lambda_function(
         timeout=900,
         runtime="python3.10",
         handler="index.lambda_handler",
-        vpc_config={"subnet_ids": subnet_ids, "security_group_ids": security_group_ids},
+        vpc_config=vpc_config,
         layers=step.layers,
     )
 
@@ -101,37 +109,46 @@ class StepInLine(TerraformStack):
         scope: Construct,
         ns: str,
         pipeline: Pipeline,
-        vpc_id: str,
         region: str,
-        subnet_filter: Union[IResolvable, List[data_aws_subnets.DataAwsSubnetsFilter]],
-        outbound_cidr: List[str] = [
+        vpc_id: Optional[str] = None,
+        subnet_filter: Optional[
+            Union[IResolvable, List[data_aws_subnets.DataAwsSubnetsFilter]]
+        ] = None,
+        outbound_cidr: Optional[List[str]] = [
             "0.0.0.0/0",
         ],
     ):
         super().__init__(scope, ns)
 
         AwsProvider(self, "AWS", region=region)
-        subnets = data_aws_subnets.DataAwsSubnets(
-            self, "private_subnets", filter=subnet_filter
-        )
-        security_group_for_lambda = security_group.SecurityGroup(
-            self,
-            "security_group_lambda",
-            egress=[
-                {
-                    "fromPort": 0,
-                    "toPort": 0,
-                    "protocol": "-1",
-                    "cidrBlocks": outbound_cidr,
-                }
-            ],
-            vpc_id=vpc_id,
-        )
+
+        subnet_ids = None
+        security_group_ids = None
+        if vpc_id is not None:
+            subnets = data_aws_subnets.DataAwsSubnets(
+                self, "private_subnets", filter=subnet_filter
+            )
+            security_group_for_lambda = security_group.SecurityGroup(
+                self,
+                "security_group_lambda",
+                egress=[
+                    {
+                        "fromPort": 0,
+                        "toPort": 0,
+                        "protocol": "-1",
+                        "cidrBlocks": outbound_cidr,
+                    }
+                ],
+                vpc_id=vpc_id,
+            )
+
+            subnet_ids = subnets.ids
+            security_group_ids = [security_group_for_lambda.id]
 
         step_to_lambda_tf = {}
         for step in pipeline.get_steps():
             step_lambda = generate_lambda_function(
-                self, step, subnets.ids, [security_group_for_lambda.id]
+                self, step, subnet_ids, security_group_ids
             )
             step_to_lambda_tf[step.name] = step_lambda.arn
 
@@ -167,6 +184,6 @@ def main():
     )
 
     pipe = Pipeline("mytest", steps=[step_train_result])
-    stack = StepInLine(app, "aws_instance", pipe, "myvpc", "us-east-1", [])
+    stack = StepInLine(app, "aws_instance", pipe, "us-east-1")
 
     app.synth()
