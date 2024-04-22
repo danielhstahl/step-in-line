@@ -1,11 +1,21 @@
 name: Tag
 on:
   pull_request:
-    types: [assigned, labeled, unlabeled, opened, synchronize, reopened, ready_for_review, closed]
+    types:
+      [
+        assigned,
+        labeled,
+        unlabeled,
+        opened,
+        synchronize,
+        reopened,
+        ready_for_review,
+        closed,
+      ]
 
 # Allow a subsequently queued workflow run to interrupt a previous run
 concurrency:
-  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  group: "${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
   cancel-in-progress: true
 
 permissions:
