@@ -17,7 +17,8 @@ app = App(hcl_output=True)
 # function names must be unique, or you can pass a name to the step to 
 # ensure uniqueness
 @step(
-    name = "preprocess_unique", 
+    name = "preprocess_unique",
+    python_runtime = "python3.9", # defaults to 3.10
     layers = ["arn:aws:lambda:us-east-2:123456789012:layer:example-layer"]
 )
 def preprocess(arg1: str) -> str:

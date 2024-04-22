@@ -110,7 +110,7 @@ def generate_lambda_function(
         scope
         name_prefix (str): Prefix for lambda name to ensure uniqueness.
         step (Step): Step to create Lambda from
-        subnet_ids (list): Optional subnet IDs.  Required if VPC is specified
+        subnet_ids (list): Optional subnet IDs.  Required if VPC is specified.
         security_group_ids (list): Option security group IDs.  Required if VPC is specified.
     """
     role = {
@@ -173,7 +173,7 @@ def generate_lambda_function(
         role=lambda_role.arn,
         filename=lambda_filename,
         timeout=900,
-        runtime="python3.10",
+        runtime=step.python_runtime,
         handler=lambda_handler,
         vpc_config=vpc_config,
         layers=step.layers,
