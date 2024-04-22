@@ -14,7 +14,7 @@
 from __future__ import absolute_import
 
 import logging
-from typing import Sequence, Optional, List, Callable, Dict, Any, Tuple
+from typing import Sequence, Optional, List, Callable, Any, Tuple
 import networkx as nx
 from .step import Step
 from stepfunctions.steps import LambdaStep, Chain, Retry, Parallel, Graph
@@ -63,7 +63,7 @@ def convert_step_to_lambda(
     return lambda_state
 
 
-def default_lambda_name(s: Step) -> str:
+def _default_lambda_name(s: Step) -> str:
     return "${aws_lambda_function." + s.name + "lambda.arn}"
 
 
@@ -72,7 +72,8 @@ class Pipeline:
         self,
         name: str = "",
         steps: Optional[Sequence[Step]] = None,
-        generate_step_name: Callable[[Step], str] = default_lambda_name,
+        schedule: Optional[str] = None,  # cron
+        generate_step_name: Callable[[Step], str] = _default_lambda_name,
     ):
         """Initialize a Pipeline
 
@@ -84,6 +85,7 @@ class Pipeline:
         self.steps = steps if steps else []
         self.graph = nx.DiGraph()
         self.generate_step_name = generate_step_name
+        self.schedule = schedule
         for step in steps:
             crawl_back(self.graph, step)
         if not nx.is_directed_acyclic_graph(self.graph):

@@ -13,13 +13,12 @@
 # language governing permissions and limitations under the License.
 from __future__ import absolute_import
 
-from typing import List, Optional, Callable, Any
+from typing import List, Optional, Callable, Any, Dict
 
 from .utilities import unique_name_from_base_uuid4
 from functools import wraps
 
 
-## TODO, add environment variables
 class Step:
     """`Step` for step function workflows"""
 
@@ -31,6 +30,7 @@ class Step:
         description: Optional[str] = None,
         retry_count: int = 0,
         layers: List[str] = [],
+        env_variables: Dict[str, str] = {},  # to pass in to lambda
         depends_on: Optional[List["Step"]] = None,
     ):
         """Initialize a Step
@@ -41,7 +41,8 @@ class Step:
             args (list): The arguments to the function.  If not a step, these are considered "static" and are used even in the Step Function execution
             description (str): The description of the `Step`.
             retry_count (int): Number of times to retry a failure
-            layers (list): the ARNs of layers to add to the lambda functions
+            layers (list): the ARNs of layers to add to the lambda function
+            env_variables (dict): environment variables to pass to lambda function
             depends_on (List[Step]): The list of Steps that the current `Step` depends on.
         """
         self.name = name
@@ -50,6 +51,7 @@ class Step:
         self.layers = layers
         self.func = func
         self.args = args
+        self.env_variables = env_variables
         if depends_on is not None:
             self._depends_on = depends_on
         else:
@@ -90,7 +92,8 @@ def step(
     name: Optional[str] = None,
     description: Optional[str] = None,
     layers: Optional[List[str]] = None,
-    retry_count: int = 0
+    retry_count: int = 0,
+    env_variables: Dict[str, str] = {}
 ):
     """Decorator for converting a python function to a pipeline step.
 
@@ -103,7 +106,7 @@ def step(
         description (str): Description of the step
         layers (list): Lambda layers
         retry_count (int): number of retries to attempt.  Defaults to 0 (no retries).
-
+        env_variables (dict): environment variables to pass to lambda function
 
     """
 
@@ -132,6 +135,7 @@ def step(
                 layers=layers,
                 func=func,
                 args=arg_list,
+                env_variables=env_variables,
             )
 
         return wrapper

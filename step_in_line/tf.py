@@ -14,6 +14,8 @@ from cdktf_cdktf_provider_aws import (
     sfn_state_machine,
     iam_role,
     iam_policy,
+    cloudwatch_event_rule,
+    cloudwatch_event_target,
 )
 from .step import Step, step
 from .pipeline import Pipeline
@@ -166,9 +168,70 @@ def generate_lambda_function(
         handler=lambda_handler,
         vpc_config=vpc_config,
         layers=step.layers,
+        environment=step.env_variables,
     )
 
 
+def generate_event_bridge(scope: Construct, pipeline: Pipeline, step_function_arn: str):
+    """Creates Terraform resource for event bridge to schedule step function run
+
+    Args:
+        scope
+        pipeline (Pipeline): pipeline to convert into step function
+        step_function_arn (str): ARN of the step function pipeline
+    """
+    role = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {"Service": "events.amazonaws.com"},
+                "Action": "sts:AssumeRole",
+            }
+        ],
+    }
+    policy = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": ["states:StartExecution"],
+                "Resource": step_function_arn,
+            }
+        ],
+    }
+    eventbridge_policy = iam_policy.IamPolicy(
+        scope,
+        pipeline.name + "eventbridgepolicy",
+        policy=json.dumps(policy),
+    )
+    eventbridge_role = iam_role.IamRole(
+        scope,
+        pipeline.name + "eventbridge",
+        assume_role_policy=json.dumps(role),
+        name_prefix=pipeline.name,
+    )
+    eventbridge_policy_attachment = iam_role_policy_attachment.IamRolePolicyAttachment(
+        scope,
+        pipeline.name + "eventbridgepolicyattachment",
+        policy_arn=eventbridge_policy.arn,
+        role=eventbridge_role.name,
+    )
+    event_rule = cloudwatch_event_rule.CloudwatchEventRule(
+        scope,
+        pipeline.name + "eventrule",
+        schedule_expression=pipeline.schedule,
+    )
+    cloudwatch_event_target.CloudwatchEventTarget(
+        scope,
+        pipeline.name + "eventtarget",
+        rule=event_rule.name,
+        arn=step_function_arn,
+        role_arn=eventbridge_role.arn,
+    )
+
+
+## TODO, add cloudwatch logging
 def generate_step_function(
     scope: Construct, pipeline: Pipeline, aws_region: str, lambda_arns: List[str]
 ):
@@ -186,7 +249,12 @@ def generate_step_function(
             {
                 "Effect": "Allow",
                 "Action": "sts:AssumeRole",
-                "Principal": {"Service": [f"states.{aws_region}.amazonaws.com"]},
+                "Principal": {
+                    "Service": [
+                        f"states.{aws_region}.amazonaws.com",
+                        "events.amazonaws.com",
+                    ]
+                },
             }
         ],
     }
@@ -217,7 +285,7 @@ def generate_step_function(
         policy_arn=stepfunction_policy.arn,
         role=stepfunction_role.name,
     )
-    sfn_state_machine.SfnStateMachine(
+    return sfn_state_machine.SfnStateMachine(
         scope,
         pipeline.name,
         role_arn=stepfunction_role.arn,
@@ -277,7 +345,11 @@ class StepInLine(TerraformStack):
             step_to_lambda_tf[step.name] = step_lambda.arn
 
         pipeline.set_generate_step_name(lambda s: step_to_lambda_tf[s.name])
-        generate_step_function(self, pipeline, region, list(step_to_lambda_tf.values()))
+        step_function = generate_step_function(
+            self, pipeline, region, list(step_to_lambda_tf.values())
+        )
+        if pipeline.schedule is not None:
+            generate_event_bridge(self, pipeline, step_function.arn)
 
 
 def rename_tf_output(path: Path):
@@ -320,7 +392,7 @@ def main():
         step_process_result, step_process_result_2, step_process_result_3
     )
     instance_name = "aws_instance"
-    pipe = Pipeline("mytest", steps=[step_train_result])
+    pipe = Pipeline("mytest", steps=[step_train_result], schedule="rate(2 minutes)")
     stack = StepInLine(app, instance_name, pipe, "us-east-1")
     tf_path = Path(app.outdir, "stacks", instance_name)
     app.synth()
