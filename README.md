@@ -55,7 +55,8 @@ step_train_result = train(
     step_process_result, step_process_result_2, step_process_result_3
 )
 # this creates a pipeline including all the dependent steps
-pipe = Pipeline("mytest", steps=[step_train_result])
+# "schedule" is optional, and can be cron or rate based
+pipe = Pipeline("mytest", steps=[step_train_result], schedule="rate(2 minutes)")
 
 # to run locally
 print(pipe.local_run()) # will print output of each step
