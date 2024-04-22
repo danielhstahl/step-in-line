@@ -27,8 +27,8 @@ def crawl_back(graph: nx.DiGraph, step: Step):
     """Create the Graph of Steps
 
     Args:
-        graph (DiGraph): The graph to populate with Step
-        step (Step): The step to add to the graph
+        graph (DiGraph): The graph to populate with Steps
+        step (Step): The `Step` to add to the graph
     """
     for dependency in step.depends_on:
         graph.add_edge(dependency, step)
@@ -39,8 +39,9 @@ def convert_step_to_lambda(
     step: Step, generate_step_name: Callable[[Step], str]
 ) -> LambdaStep:
     """Create Lambda from Step
+
     Args:
-        step (Step): The step to convert to a lambda
+        step (Step): The `Step` to convert to a lambda
         generate_step_name (callable): Generates the ARN of the Lambda from the step
     """
     lambda_state = LambdaStep(
@@ -77,8 +78,7 @@ class Pipeline:
 
         Args:
             name (str): The name of the pipeline.
-            steps (Sequence[[Step]]): The list of the
-                non-conditional steps associated with the pipeline.
+            steps (Sequence[Step]): The list of the non-conditional Steps associated with the pipeline.
         """
         self.name = name
         self.steps = steps if steps else []

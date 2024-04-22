@@ -38,13 +38,11 @@ class Step:
         Args:
             name (str): The name of the `Step`.
             func (callable): The function that should be executed as part of this step
-            args (list): The arguments to the function.  If not a step, these are
-                considered "static" and are used even in the Step Function execution
+            args (list): The arguments to the function.  If not a step, these are considered "static" and are used even in the Step Function execution
             description (str): The description of the `Step`.
             retry_count (int): Number of times to retry a failure
             layers (list): the ARNs of layers to add to the lambda functions
-            depends_on (List[Union[str, Step, StepCollection]]): The list of `Step`s that
-                the current `Step` depends on.
+            depends_on (List[Step]): The list of Steps that the current `Step` depends on.
         """
         self.name = name
         self.description = description
@@ -101,8 +99,7 @@ def step(
 
     Args:
         _func: A Python function to run as a SageMaker pipeline step.
-        name (str): Name of the pipeline step. Defaults to a generated name using function name
-            and uuid4 identifier to avoid duplicates.
+        name (str): Name of the pipeline step. Defaults to a generated name using function name and uuid4 identifier to avoid duplicates.
         description (str): Description of the step
         layers (list): Lambda layers
         retry_count (int): number of retries to attempt.  Defaults to 0 (no retries).

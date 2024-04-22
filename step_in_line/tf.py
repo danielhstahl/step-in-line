@@ -30,6 +30,7 @@ def remove_decorators(src: str) -> str:
     """Removes any decorators from source code and
             truncates code so that there is no space
             in front of function definition
+
     Args:
         src (str): Source code for lambda
     """
@@ -43,6 +44,7 @@ def remove_decorators(src: str) -> str:
 
 def get_python_code(python_template_path: str, step: Step) -> str:
     """Generates full python code for lambda
+
     Args:
         python_template_path (str): Location of template python code
         step (Step): Step to place inside template
@@ -59,10 +61,11 @@ def get_python_code(python_template_path: str, step: Step) -> str:
 
 
 def package_lambda(python_template_path: str, step: Step, lambda_entry: str) -> str:
-    """Creates zip of step code for use in Lambda
+    """Creates zip of `Step` code for use in Lambda
+
     Args:
         python_template_path (str): Location of template python code
-        step (Step): Step to place inside template
+        step (Step): `Step` to place inside template
         lambda_entry (str): Name of python entry file
     """
     lambda_python_file = get_python_code(python_template_path, step)
@@ -92,6 +95,7 @@ def generate_lambda_function(
     security_group_ids: Optional[List[str]] = None,
 ):
     """Creates Terraform resource for Lambda
+
     Args:
         scope
         step (Step): Step to create Lambda from
@@ -169,12 +173,12 @@ def generate_step_function(
     scope: Construct, pipeline: Pipeline, aws_region: str, lambda_arns: List[str]
 ):
     """Creates Terraform resource for step functions
+
     Args:
         scope
         pipeline (Pipeline): pipeline to convert into step function
         aws_region (str): AWS Region
-        lambda_arns (list): ARNs of Lambdas, required to give step
-            functions access to invoke Lambdas
+        lambda_arns (list): ARNs of Lambdas, required to give step functions access to invoke Lambdas
     """
     role = {
         "Version": "2012-10-17",
@@ -280,6 +284,7 @@ def rename_tf_output(path: Path):
     """Terraform creates .tf, but expects .tf.json.  This function
             adds the .json extension and moves it into the root
             directory
+
     Args:
         path (Path): directory where Terraform outputs the .tf file
     """
