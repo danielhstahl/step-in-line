@@ -3,14 +3,11 @@ on:
   pull_request:
     types:
       [
-        assigned,
         labeled,
         unlabeled,
         opened,
-        synchronize,
         reopened,
         ready_for_review,
-        closed,
       ]
 
 # Allow a subsequently queued workflow run to interrupt a previous run
@@ -45,6 +42,6 @@ jobs:
             github.rest.git.createRef({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              ref: `refs/tags/v${TAG}`,
+              ref: `refs/tags/${TAG}`,
               sha: context.sha
             })
