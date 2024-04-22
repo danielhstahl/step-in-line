@@ -1,8 +1,13 @@
 from step_in_line.step import step
 from step_in_line.pipeline import Pipeline
+import os
 
 
 def test_pipeline_creates_step_dag():
+    os.environ["AWS_DEFAULT_REGION"] = (
+        "us-east-1"  # Workflow from stepfunctions appears to require this....
+    )
+
     @step
     def preprocess(arg1: str) -> str:
         return "hello"
