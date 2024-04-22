@@ -90,8 +90,17 @@ class Pipeline:
             crawl_back(self.graph, step)
         if not nx.is_directed_acyclic_graph(self.graph):
             raise ValueError("Cycle detected in pipeline step graph.")
+        if not self._check_uniqueness_of_names():
+            raise ValueError(
+                "Non-unique Step names!  Step names must be unique or a unique name must be passed to the @step decorator."
+            )
+
+    def _check_uniqueness_of_names(self) -> bool:
+        num_steps = len(self.get_steps())
+        return len(set(step.name for step in self.get_steps())) == num_steps
 
     def get_steps(self) -> List[Step]:
+        """Gets all steps, guaranteed to be unique."""
         return self.graph.nodes
 
     def generate_layers(self) -> List[List[Step]]:

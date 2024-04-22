@@ -16,16 +16,18 @@ from cdktf_cdktf_provider_aws import (
     iam_policy,
     cloudwatch_event_rule,
     cloudwatch_event_target,
+    cloudwatch_log_group,
 )
 from .step import Step, step
 from .pipeline import Pipeline
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Tuple
 import json
 import zipfile
 import pickle
 from pathlib import Path
 import inspect
 import textwrap
+from hashlib import sha256
 
 
 def remove_decorators(src: str) -> str:
@@ -62,7 +64,9 @@ def get_python_code(python_template_path: str, step: Step) -> str:
     return new_file_name
 
 
-def package_lambda(python_template_path: str, step: Step, lambda_entry: str) -> str:
+def package_lambda(
+    python_template_path: str, step: Step, lambda_entry: str
+) -> Tuple[str, str]:
     """Creates zip of `Step` code for use in Lambda
 
     Args:
@@ -87,11 +91,15 @@ def package_lambda(python_template_path: str, step: Step, lambda_entry: str) -> 
     zf.write("args.pickle")
     zf.write("name.pickle")
     zf.close()
-    return zip_name
+    with open(zip_name, "rb") as f:
+        data = f.read()
+        hash_sha256 = sha256(data).hexdigest()
+    return zip_name, hash_sha256
 
 
 def generate_lambda_function(
     scope: Construct,
+    name_prefix: str,
     step: Step,
     subnet_ids: Optional[List[str]] = None,
     security_group_ids: Optional[List[str]] = None,
@@ -100,6 +108,7 @@ def generate_lambda_function(
 
     Args:
         scope
+        name_prefix (str): Prefix for lambda name to ensure uniqueness.
         step (Step): Step to create Lambda from
         subnet_ids (list): Optional subnet IDs.  Required if VPC is specified
         security_group_ids (list): Option security group IDs.  Required if VPC is specified.
@@ -130,25 +139,25 @@ def generate_lambda_function(
     }
 
     lambda_entry = "index"
-    lambda_filename = package_lambda(
+    lambda_filename, sha256_hash = package_lambda(
         "step_in_line/template_lambda.py", step, lambda_entry
     )
     lambda_handler = f"{lambda_entry}.lambda_handler"
 
     lambda_role = iam_role.IamRole(
         scope,
-        step.func.__name__,
+        f"{step.name}role",
         assume_role_policy=json.dumps(role),
-        name=step.name,
+        name_prefix=step.name,
     )
     stepfunction_policy = iam_policy.IamPolicy(
         scope,
-        step.name + "policy",
+        f"{step.name}policy",
         policy=json.dumps(policy),
     )
     lambda_policy_attachment = iam_role_policy_attachment.IamRolePolicyAttachment(
         scope,
-        step.func.__name__ + "policyattachment",
+        f"{step.name}policyattachment",
         policy_arn=stepfunction_policy.arn,
         role=lambda_role.name,
     )
@@ -160,7 +169,7 @@ def generate_lambda_function(
     return lambda_function.LambdaFunction(
         scope,
         step.name,
-        function_name=step.name,
+        function_name=f"{name_prefix}_{step.name}",
         role=lambda_role.arn,
         filename=lambda_filename,
         timeout=900,
@@ -168,6 +177,7 @@ def generate_lambda_function(
         handler=lambda_handler,
         vpc_config=vpc_config,
         layers=step.layers,
+        source_code_hash=sha256_hash,
         environment=step.env_variables,
     )
 
@@ -202,36 +212,35 @@ def generate_event_bridge(scope: Construct, pipeline: Pipeline, step_function_ar
     }
     eventbridge_policy = iam_policy.IamPolicy(
         scope,
-        pipeline.name + "eventbridgepolicy",
+        f"{pipeline.name}eventbridgepolicy",
         policy=json.dumps(policy),
     )
     eventbridge_role = iam_role.IamRole(
         scope,
-        pipeline.name + "eventbridge",
+        f"{pipeline.name}eventbridgerole",
         assume_role_policy=json.dumps(role),
         name_prefix=pipeline.name,
     )
     eventbridge_policy_attachment = iam_role_policy_attachment.IamRolePolicyAttachment(
         scope,
-        pipeline.name + "eventbridgepolicyattachment",
+        f"{pipeline.name}eventbridgepolicyattachment",
         policy_arn=eventbridge_policy.arn,
         role=eventbridge_role.name,
     )
     event_rule = cloudwatch_event_rule.CloudwatchEventRule(
         scope,
-        pipeline.name + "eventrule",
+        f"{pipeline.name}eventrule",
         schedule_expression=pipeline.schedule,
     )
     cloudwatch_event_target.CloudwatchEventTarget(
         scope,
-        pipeline.name + "eventtarget",
+        f"{pipeline.name}eventtarget",
         rule=event_rule.name,
         arn=step_function_arn,
         role_arn=eventbridge_role.arn,
     )
 
 
-## TODO, add cloudwatch logging
 def generate_step_function(
     scope: Construct, pipeline: Pipeline, aws_region: str, lambda_arns: List[str]
 ):
@@ -266,22 +275,51 @@ def generate_step_function(
                 "Action": ["lambda:InvokeFunction"],
                 "Resource": lambda_arns,
             },
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "logs:CreateLogDelivery",
+                    "logs:CreateLogStream",
+                    "logs:GetLogDelivery",
+                    "logs:UpdateLogDelivery",
+                    "logs:DeleteLogDelivery",
+                    "logs:ListLogDeliveries",
+                    "logs:PutLogEvents",
+                    "logs:PutResourcePolicy",
+                    "logs:DescribeResourcePolicies",
+                    "logs:DescribeLogGroups",
+                ],
+                "Resource": ["*"],
+            },
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "xray:PutTraceSegments",
+                    "xray:PutTelemetryRecords",
+                    "xray:GetSamplingRules",
+                    "xray:GetSamplingTargets",
+                ],
+                "Resource": ["*"],
+            },
         ],
     }
+    log_group = cloudwatch_log_group.CloudwatchLogGroup(
+        scope, f"{pipeline.name}log", name_prefix="/aws/vendedlogs/states/stepfunction"
+    )
     stepfunction_policy = iam_policy.IamPolicy(
         scope,
-        pipeline.name + "policy",
+        f"{pipeline.name}policy",
         policy=json.dumps(policy),
     )
     stepfunction_role = iam_role.IamRole(
         scope,
-        pipeline.name + "role",
+        f"{pipeline.name}role",
         assume_role_policy=json.dumps(role),
         name_prefix=pipeline.name,
     )
     stepfunction_policy_attachment = iam_role_policy_attachment.IamRolePolicyAttachment(
         scope,
-        pipeline.name + "policyattachment",
+        f"{pipeline.name}policyattachment",
         policy_arn=stepfunction_policy.arn,
         role=stepfunction_role.name,
     )
@@ -292,6 +330,12 @@ def generate_step_function(
         name=pipeline.name,
         type="STANDARD",
         definition=pipeline.generate_step_functions().to_json(),
+        logging_configuration={
+            "include_execution_data": True,
+            "level": "ALL",
+            "log_destination": f"{log_group.arn}:*",
+        },
+        tracing_configuration={"enabled": True},
     )
 
 
@@ -340,7 +384,7 @@ class StepInLine(TerraformStack):
         step_to_lambda_tf = {}
         for step in pipeline.get_steps():
             step_lambda = generate_lambda_function(
-                self, step, subnet_ids, security_group_ids
+                self, pipeline.name, step, subnet_ids, security_group_ids
             )
             step_to_lambda_tf[step.name] = step_lambda.arn
 

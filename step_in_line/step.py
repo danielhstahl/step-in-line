@@ -15,7 +15,7 @@ from __future__ import absolute_import
 
 from typing import List, Optional, Callable, Any, Dict
 
-from .utilities import unique_name_from_base_uuid4
+# from .utilities import unique_name_from_base_uuid4
 from functools import wraps
 
 
@@ -121,7 +121,7 @@ def step(
                 arg_list.append(arg)
             # setup default values for name, display_name and description if not provided
 
-            _name = unique_name_from_base_uuid4(func.__name__) if not name else name
+            _name = func.__name__ if not name else name
 
             _description = description
             if not _description:
