@@ -5,18 +5,84 @@ from cdktf import (
     IResolvable,
 )
 from cdktf_cdktf_provider_aws.provider import AwsProvider
-from cdktf_cdktf_provider_aws import lambda_function
-from cdktf_cdktf_provider_aws import sfn_state_machine, iam_role
+
 from cdktf_cdktf_provider_aws import (
     data_aws_subnets,
     security_group,
+    iam_role_policy_attachment,
+    lambda_function,
+    sfn_state_machine,
+    iam_role,
+    iam_policy,
 )
 from .step import Step, step
 from .pipeline import Pipeline
 from typing import List, Union, Optional
 import json
 import zipfile
-import dill
+import pickle
+from pathlib import Path
+import inspect
+import textwrap
+
+
+def remove_decorators(src: str) -> str:
+    """Removes any decorators from source code and
+            truncates code so that there is no space
+            in front of function definition
+    Args:
+        src (str): Source code for lambda
+    """
+    lines = []
+    for line in src.splitlines():
+        if not line.lstrip().startswith("@"):
+            lines.append(line)
+
+    return textwrap.dedent("\n".join(lines))
+
+
+def get_python_code(python_template_path: str, step: Step) -> str:
+    """Generates full python code for lambda
+    Args:
+        python_template_path (str): Location of template python code
+        step (Step): Step to place inside template
+    """
+    code = remove_decorators(inspect.getsource(step.func))
+    with open(python_template_path, "r") as f:
+        template = f.read()
+    template = template.replace('"{{PUT_FUNCTION_HERE}}"', code)
+    template = template.replace('"{{PUT_FUNCTION_NAME_HERE}}"', step.func.__name__)
+    new_file_name = f"{step.func.__name__}.py"
+    with open(new_file_name, "w") as f:
+        f.write(template)
+    return new_file_name
+
+
+def package_lambda(python_template_path: str, step: Step, lambda_entry: str) -> str:
+    """Creates zip of step code for use in Lambda
+    Args:
+        python_template_path (str): Location of template python code
+        step (Step): Step to place inside template
+        lambda_entry (str): Name of python entry file
+    """
+    lambda_python_file = get_python_code(python_template_path, step)
+
+    with open("args.pickle", "wb") as f:
+        pickle.dump(
+            [step.name if isinstance(step, Step) else step for step in step.args], f
+        )
+
+    with open("name.pickle", "wb") as f:
+        pickle.dump(step.name, f)
+
+    zip_name = f"{step.name}.zip"
+
+    zf = zipfile.ZipFile(zip_name, mode="w")
+    zf.write(lambda_python_file, arcname=f"{lambda_entry}.py")
+    zf.write("args.pickle")
+    zf.write("name.pickle")
+    zf.close()
+    return zip_name
 
 
 def generate_lambda_function(
@@ -25,6 +91,13 @@ def generate_lambda_function(
     subnet_ids: Optional[List[str]] = None,
     security_group_ids: Optional[List[str]] = None,
 ):
+    """Creates Terraform resource for Lambda
+    Args:
+        scope
+        step (Step): Step to create Lambda from
+        subnet_ids (list): Optional subnet IDs.  Required if VPC is specified
+        security_group_ids (list): Option security group IDs.  Required if VPC is specified.
+    """
     role = {
         "Version": "2012-10-17",
         "Statement": [
@@ -35,22 +108,43 @@ def generate_lambda_function(
             }
         ],
     }
-    with open("myfunc.pickle", "wb") as f:
-        dill.dump(step, f)
-    zip_name = f"{step.name}.zip"
-    lambda_source_code = "step_in_line/template_lambda.py"
+    policy = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents",
+                ],
+                "Resource": ["arn:aws:logs:*:*:*"],
+            },
+        ],
+    }
 
-    zf = zipfile.ZipFile(zip_name, mode="w")
-    zf.write(lambda_source_code, arcname="index.py")
-    zf.write("myfunc.pickle")
-    zf.close()
+    lambda_entry = "index"
+    lambda_filename = package_lambda(
+        "step_in_line/template_lambda.py", step, lambda_entry
+    )
+    lambda_handler = f"{lambda_entry}.lambda_handler"
 
     lambda_role = iam_role.IamRole(
         scope,
-        id_=step.name + "role",
-        id=step.name + "role",
+        step.func.__name__,
         assume_role_policy=json.dumps(role),
-        name_prefix=step.name,
+        name=step.name,
+    )
+    stepfunction_policy = iam_policy.IamPolicy(
+        scope,
+        step.name + "policy",
+        policy=json.dumps(policy),
+    )
+    lambda_policy_attachment = iam_role_policy_attachment.IamRolePolicyAttachment(
+        scope,
+        step.func.__name__ + "policyattachment",
+        policy_arn=stepfunction_policy.arn,
+        role=lambda_role.name,
     )
     vpc_config = (
         None
@@ -59,23 +153,40 @@ def generate_lambda_function(
     )
     return lambda_function.LambdaFunction(
         scope,
-        id=step.name,
-        id_=step.name,
+        step.name,
         function_name=step.name,
         role=lambda_role.arn,
-        filename=zip_name,
+        filename=lambda_filename,
         timeout=900,
         runtime="python3.10",
-        handler="index.lambda_handler",
+        handler=lambda_handler,
         vpc_config=vpc_config,
         layers=step.layers,
     )
 
 
 def generate_step_function(
-    scope: Construct, pipeline: Pipeline, lambda_arns: List[str]
+    scope: Construct, pipeline: Pipeline, aws_region: str, lambda_arns: List[str]
 ):
+    """Creates Terraform resource for step functions
+    Args:
+        scope
+        pipeline (Pipeline): pipeline to convert into step function
+        aws_region (str): AWS Region
+        lambda_arns (list): ARNs of Lambdas, required to give step
+            functions access to invoke Lambdas
+    """
     role = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": "sts:AssumeRole",
+                "Principal": {"Service": [f"states.{aws_region}.amazonaws.com"]},
+            }
+        ],
+    }
+    policy = {
         "Version": "2012-10-17",
         "Statement": [
             {
@@ -85,17 +196,26 @@ def generate_step_function(
             },
         ],
     }
+    stepfunction_policy = iam_policy.IamPolicy(
+        scope,
+        pipeline.name + "policy",
+        policy=json.dumps(policy),
+    )
     stepfunction_role = iam_role.IamRole(
         scope,
-        id_=pipeline.name + "role",
-        id=pipeline.name + "role",
+        pipeline.name + "role",
         assume_role_policy=json.dumps(role),
         name_prefix=pipeline.name,
     )
+    stepfunction_policy_attachment = iam_role_policy_attachment.IamRolePolicyAttachment(
+        scope,
+        pipeline.name + "policyattachment",
+        policy_arn=stepfunction_policy.arn,
+        role=stepfunction_role.name,
+    )
     sfn_state_machine.SfnStateMachine(
-        scope=scope,
-        id_=pipeline.name,
-        id=pipeline.name,
+        scope,
+        pipeline.name,
         role_arn=stepfunction_role.arn,
         name=pipeline.name,
         type="STANDARD",
@@ -153,7 +273,19 @@ class StepInLine(TerraformStack):
             step_to_lambda_tf[step.name] = step_lambda.arn
 
         pipeline.set_generate_step_name(lambda s: step_to_lambda_tf[s.name])
-        generate_step_function(self, pipeline, list(step_to_lambda_tf.values()))
+        generate_step_function(self, pipeline, region, list(step_to_lambda_tf.values()))
+
+
+def rename_tf_output(path: Path):
+    """Terraform creates .tf, but expects .tf.json.  This function
+            adds the .json extension and moves it into the root
+            directory
+    Args:
+        path (Path): directory where Terraform outputs the .tf file
+    """
+    for file in path.glob("*.tf"):
+        new_name = file.with_suffix(".tf.json")
+        file.replace(new_name.name)  # put in root directory
 
 
 ## example, for testing
@@ -173,7 +305,7 @@ def main():
         return "hello"
 
     @step
-    def train(arg2: str):
+    def train(arg1: str, arg2: str, arg3: str):
         return "goodbye"
 
     step_process_result = preprocess("hi")
@@ -182,8 +314,9 @@ def main():
     step_train_result = train(
         step_process_result, step_process_result_2, step_process_result_3
     )
-
+    instance_name = "aws_instance"
     pipe = Pipeline("mytest", steps=[step_train_result])
-    stack = StepInLine(app, "aws_instance", pipe, "us-east-1")
-
+    stack = StepInLine(app, instance_name, pipe, "us-east-1")
+    tf_path = Path(app.outdir, "stacks", instance_name)
     app.synth()
+    rename_tf_output(tf_path)

@@ -10,7 +10,7 @@ The API is intentionally similar to the Sagemaker Pipeline API.
 from cdktf import App
 from step_in_line.step import step
 from step_in_line.pipeline import Pipeline
-from step_in_line.tf import StepInLine
+from step_in_line.tf import StepInLine, rename_tf_output
 
 app = App(hcl_output=True)
 
@@ -61,15 +61,19 @@ pipe = Pipeline("mytest", steps=[step_train_result])
 print(pipe.local_run()) # will print output of each step
 
 # generate terraform json including step function code and lambdas
-stack = StepInLine(app, "aws_instance", pipe, "us-east-1")
+instance_name = "aws_instance"
+stack = StepInLine(app, instance_name, pipe, "us-east-1")
 
 # write the terraform json for use by `terraform apply`
+tf_path = Path(app.outdir, "stacks", instance_name)
 app.synth()
+rename_tf_output(tf_path)
 
 ```
 
 ```bash
-## possibly doesn't need -chdir for `init`
-terraform -chdir=cdktf.out/stacks/aws_instance init
-terraform -chdir=cdktf.out/stacks/aws_instance apply
+export AWS_ACCESS_KEY_ID=your_aws_access_key
+export AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+terraform init
+terraform apply
 ```

@@ -11,9 +11,7 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
-"""The `Step` definitions for SageMaker Pipelines Workflows."""
 from __future__ import absolute_import
-
 
 from typing import List, Optional, Callable, Any
 
@@ -21,6 +19,7 @@ from .utilities import unique_name_from_base_uuid4
 from functools import wraps
 
 
+## TODO, add environment variables
 class Step:
     """`Step` for step function workflows"""
 
@@ -30,7 +29,7 @@ class Step:
         func: Callable,
         args: List[Any],
         description: Optional[str] = None,
-        retry_count: Optional[int] = 0,
+        retry_count: int = 0,
         layers: List[str] = [],
         depends_on: Optional[List["Step"]] = None,
     ):
@@ -38,11 +37,14 @@ class Step:
 
         Args:
             name (str): The name of the `Step`.
+            func (callable): The function that should be executed as part of this step
+            args (list): The arguments to the function.  If not a step, these are
+                considered "static" and are used even in the Step Function execution
             description (str): The description of the `Step`.
-            step_type (StepTypeEnum): The type of the `Step`.
-            depends_on (List[Union[str, Step, StepCollection]]): The list of `Step`/`StepCollection`
-                names or `Step` or `StepCollection`, `StepOutput` instances that the current `Step`
-                depends on.
+            retry_count (int): Number of times to retry a failure
+            layers (list): the ARNs of layers to add to the lambda functions
+            depends_on (List[Union[str, Step, StepCollection]]): The list of `Step`s that
+                the current `Step` depends on.
         """
         self.name = name
         self.description = description
@@ -94,21 +96,16 @@ def step(
 ):
     """Decorator for converting a python function to a pipeline step.
 
-    This decorator wraps the annotated code into a `DelayedReturn` object which can then be passed
-    to a pipeline as a step. This creates a new pipeline that proceeds from the step of the
-    `DelayedReturn` object.
-
-    If the value for a parameter is not set, the decorator first looks up the value from the
-    SageMaker configuration file. If no value is specified in the configuration file or no
-    configuration file is found, the decorator selects the default as specified in the following
-    list. For more information, see `Configuring and using defaults with the SageMaker Python SDK
-    <https://sagemaker.readthedocs.io/en/stable/overview.html#configuring-and-using-defaults-with-the-sagemaker-python-sdk>`_.
+    This decorator wraps the annotated code into a `Step` object which can then be passed
+    to a pipeline as a step.
 
     Args:
         _func: A Python function to run as a SageMaker pipeline step.
-
         name (str): Name of the pipeline step. Defaults to a generated name using function name
             and uuid4 identifier to avoid duplicates.
+        description (str): Description of the step
+        layers (list): Lambda layers
+        retry_count (int): number of retries to attempt.  Defaults to 0 (no retries).
 
 
     """

@@ -24,6 +24,12 @@ logger = logging.getLogger(__name__)
 
 
 def crawl_back(graph: nx.DiGraph, step: Step):
+    """Create the Graph of Steps
+
+    Args:
+        graph (DiGraph): The graph to populate with Step
+        step (Step): The step to add to the graph
+    """
     for dependency in step.depends_on:
         graph.add_edge(dependency, step)
         crawl_back(graph, dependency)
@@ -32,6 +38,11 @@ def crawl_back(graph: nx.DiGraph, step: Step):
 def convert_step_to_lambda(
     step: Step, generate_step_name: Callable[[Step], str]
 ) -> LambdaStep:
+    """Create Lambda from Step
+    Args:
+        step (Step): The step to convert to a lambda
+        generate_step_name (callable): Generates the ARN of the Lambda from the step
+    """
     lambda_state = LambdaStep(
         state_id=step.name,
         parameters={
@@ -66,12 +77,8 @@ class Pipeline:
 
         Args:
             name (str): The name of the pipeline.
-            steps (Sequence[Union[Step, StepCollection, StepOutput]]): The list of the
-                non-conditional steps associated with the pipeline. Any steps that are within the
-                `if_steps` or `else_steps` of a `ConditionStep` cannot be listed in the steps of a
-                pipeline. Of particular note, the workflow service rejects any pipeline definitions
-                that specify a step in the list of steps of a pipeline and that step in the
-                `if_steps` or `else_steps` of any `ConditionStep`.
+            steps (Sequence[[Step]]): The list of the
+                non-conditional steps associated with the pipeline.
         """
         self.name = name
         self.steps = steps if steps else []
@@ -86,9 +93,14 @@ class Pipeline:
         return self.graph.nodes
 
     def generate_layers(self) -> List[List[Step]]:
+        """Create indexed sets of steps.
+        This allows steps to be run in parallel,
+        if they don't depend on each other
+        """
         return list(nx.topological_generations(self.graph))
 
     def generate_step_functions(self) -> Graph:
+        """Create Step Function dictionary"""
         dag_lambda = []
         for index, layer in enumerate(self.generate_layers()):
             if len(layer) == 1:
@@ -110,6 +122,7 @@ class Pipeline:
         self.generate_step_name = generate_step_name
 
     def local_run(self) -> List[List[Tuple[str, Any]]]:
+        """Runs pipeline locally, with no AWS dependency"""
         outputs = {}
         output_arr = []
         for layer in self.generate_layers():

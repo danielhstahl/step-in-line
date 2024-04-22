@@ -3,3 +3,9 @@ __pycache__
 *.pickle
 *.zip
 *.out
+*.tfstate
+*.tf.json
+.terraform
+*.hcl
+*.backup
+.env
