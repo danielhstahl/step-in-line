@@ -77,6 +77,8 @@ stack = StepInLine(app, instance_name, pipe, "us-east-1")
 # write the terraform json for use by `terraform apply`
 tf_path = Path(app.outdir, "stacks", instance_name)
 app.synth()
+# Terraform Python SDK does not add ".json" extension; this function
+# renames the generated Terraform file and copies it to the project root.
 rename_tf_output(tf_path)
 
 ```
