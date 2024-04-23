@@ -94,3 +94,7 @@ terraform apply
 ## API Docs
 
 https://danielhstahl.github.io/step-in-line/index.html
+
+## Development: Publish a new version
+
+Create a new release with a new tag; a Github action will publish the new version.
