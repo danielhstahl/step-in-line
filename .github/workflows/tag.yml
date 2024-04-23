@@ -8,6 +8,7 @@ on:
         opened,
         reopened,
         ready_for_review,
+        edited
       ]
 
 # Allow a subsequently queued workflow run to interrupt a previous run
