@@ -173,6 +173,7 @@ def generate_lambda_function(
         role=lambda_role.arn,
         filename=lambda_filename,
         timeout=900,
+        memory_size=step.memory_size,
         runtime=step.python_runtime,
         handler=lambda_handler,
         vpc_config=vpc_config,

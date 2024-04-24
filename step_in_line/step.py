@@ -14,6 +14,7 @@ class Step:
         func: Callable,
         args: List[Any],
         python_runtime: str,
+        memory_size: int = 512,
         description: Optional[str] = None,
         retry_count: int = 0,
         layers: List[str] = [],
@@ -27,6 +28,7 @@ class Step:
             func (callable): The function that should be executed as part of this step
             args (list): The arguments to the function.  If not a step, these are considered "static" and are used even in the Step Function execution
             python_runtime (str): Lambda runtime.
+            memory_size (int): Megabytes of memory for the lambda.  Defaults to 512.
             description (str): The description of the `Step`.
             retry_count (int): Number of times to retry a failure
             layers (list): the ARNs of layers to add to the lambda function
@@ -39,6 +41,7 @@ class Step:
         self.layers = layers
         self.func = func
         self.args = args
+        self.memory_size = memory_size
         self.python_runtime = python_runtime
         self.env_variables = env_variables
         if depends_on is not None:
@@ -82,6 +85,7 @@ def step(
     description: Optional[str] = None,
     layers: Optional[List[str]] = None,
     python_runtime: str = "python3.10",
+    memory_size: int = 512,
     retry_count: int = 0,
     env_variables: Dict[str, str] = {}
 ):
@@ -95,6 +99,8 @@ def step(
         name (str): Name of the pipeline step. Defaults to a generated name using function name and uuid4 identifier to avoid duplicates.
         description (str): Description of the step
         layers (list): Lambda layers
+        python_runtime (str): Lambda runtime.
+        memory_size (int): Megabytes of memory for the lambda.  Defaults to 512.
         retry_count (int): number of retries to attempt.  Defaults to 0 (no retries).
         env_variables (dict): environment variables to pass to lambda function
 
