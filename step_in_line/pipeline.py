@@ -37,7 +37,7 @@ def convert_step_to_lambda(
         state_id=step.name,
         parameters={
             "FunctionName": generate_step_name(step),  # the function arn
-            "Payload.$": "$",
+            "Payload.$": "$",  # pass in all the possible values, including outputs from previous steps
         },
     )
     if step.retry_count > 0:
@@ -93,7 +93,8 @@ class Pipeline:
         return self.graph.nodes
 
     def generate_layers(self) -> List[List[Step]]:
-        """Create indexed sets of steps.
+        """
+        Create indexed sets of steps.
         This allows steps to be run in parallel,
         if they don't depend on each other
         """
@@ -122,9 +123,14 @@ class Pipeline:
         self.generate_step_name = generate_step_name
 
     def local_run(self) -> List[List[Tuple[str, Any]]]:
-        """Runs pipeline locally, with no AWS dependency"""
-        outputs = {}
-        output_arr = []
+        """
+        Runs pipeline locally, with no AWS dependency.
+        Returns all intermediary outputs.
+        """
+        outputs = {}  # contains all intermediary output
+        output_arr = (
+            []
+        )  # constains all intermediary output, in the shape of the steps given by the topological generations
         for layer in self.generate_layers():
             layer_output = []
             for step in layer:
