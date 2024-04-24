@@ -19,7 +19,7 @@ app = App(hcl_output=True)
 @step(
     name = "preprocess_unique",
     python_runtime = "python3.9", # defaults to 3.10
-    memory_size = "128", # defaults to 512
+    memory_size = 128, # defaults to 512
     layers = ["arn:aws:lambda:us-east-2:123456789012:layer:example-layer"]
 )
 def preprocess(arg1: str) -> str:
