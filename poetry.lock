@@ -23,7 +23,7 @@ tests-no-zope = ["attrs[tests-mypy]", "cloudpickle", "hypothesis", "pympler", "p
 name = "cattrs"
 version = "23.2.3"
 description = "Composable complex class support for attrs and dataclasses."
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = [
     {file = "cattrs-23.2.3-py3-none-any.whl", hash = "sha256:0341994d94971052e9ee70662542699a3162ea1e0c62f7ce1b4a57f563685108"},
@@ -48,7 +48,7 @@ ujson = ["ujson (>=5.7.0)"]
 name = "cdktf"
 version = "0.20.7"
 description = "Cloud Development Kit for Terraform"
-optional = false
+optional = true
 python-versions = "~=3.8"
 files = [
     {file = "cdktf-0.20.7-py3-none-any.whl", hash = "sha256:fcf3b746eddb3e7f96465538e171b43e10aa6609373e94228fbfb64a7c2c55c7"},
@@ -65,7 +65,7 @@ typeguard = ">=2.13.3,<2.14.0"
 name = "cdktf-cdktf-provider-aws"
 version = "19.15.0"
 description = "Prebuilt aws Provider for Terraform CDK (cdktf)"
-optional = false
+optional = true
 python-versions = "~=3.8"
 files = [
     {file = "cdktf-cdktf-provider-aws-19.15.0.tar.gz", hash = "sha256:e210574364dafc464d2a5eea93af0c69a6928492bdb01afeb8c8141d14b83f16"},
@@ -94,7 +94,7 @@ files = [
 name = "constructs"
 version = "10.3.0"
 description = "A programming model for software-defined state"
-optional = false
+optional = true
 python-versions = "~=3.7"
 files = [
     {file = "constructs-10.3.0-py3-none-any.whl", hash = "sha256:2972f514837565ff5b09171cfba50c0159dfa75ee86a42921ea8c86f2941b3d2"},
@@ -124,7 +124,7 @@ test = ["pytest (>=6)"]
 name = "importlib-resources"
 version = "6.4.0"
 description = "Read resources from Python packages"
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = [
     {file = "importlib_resources-6.4.0-py3-none-any.whl", hash = "sha256:50d10f043df931902d4194ea07ec57960f66a80449ff867bfe782b4c486ba78c"},
@@ -153,7 +153,7 @@ files = [
 name = "jsii"
 version = "1.97.0"
 description = "Python client for jsii runtime"
-optional = false
+optional = true
 python-versions = "~=3.8"
 files = [
     {file = "jsii-1.97.0-py3-none-any.whl", hash = "sha256:5dd347cc9d279072c109829aaff11dae1c7f13169ce60887f1c1ab2c4cd4abcd"},
@@ -200,13 +200,13 @@ files = [
 
 [[package]]
 name = "pluggy"
-version = "1.4.0"
+version = "1.5.0"
 description = "plugin and hook calling mechanisms for python"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "pluggy-1.4.0-py3-none-any.whl", hash = "sha256:7db9f7b503d67d1c5b95f59773ebb58a8c1c288129a88665838012cfb07b8981"},
-    {file = "pluggy-1.4.0.tar.gz", hash = "sha256:8c85c2876142a764e5b7548e7d9a0e0ddb46f5185161049a79b7e974454223be"},
+    {file = "pluggy-1.5.0-py3-none-any.whl", hash = "sha256:44e1ad92c8ca002de6377e165f3e0f1be63266ab4d554740532335b9d75ea669"},
+    {file = "pluggy-1.5.0.tar.gz", hash = "sha256:2cffa88e94fdc978c4c574f15f9e59b7f4201d439195c3715ca9e2486f1d0cf1"},
 ]
 
 [package.extras]
@@ -217,7 +217,7 @@ testing = ["pytest", "pytest-benchmark"]
 name = "publication"
 version = "0.0.3"
 description = "Publication helps you maintain public-api-friendly modules by preventing unintentional access to private implementation details via introspection."
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "publication-0.0.3-py2.py3-none-any.whl", hash = "sha256:0248885351febc11d8a1098d5c8e3ab2dabcf3e8c0c96db1e17ecd12b53afbe6"},
@@ -250,7 +250,7 @@ testing = ["argcomplete", "attrs (>=19.2)", "hypothesis (>=3.56)", "mock", "pygm
 name = "python-dateutil"
 version = "2.9.0.post0"
 description = "Extensions to the standard Python datetime module"
-optional = false
+optional = true
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 files = [
     {file = "python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3"},
@@ -264,7 +264,7 @@ six = ">=1.5"
 name = "six"
 version = "1.16.0"
 description = "Python 2 and 3 compatibility utilities"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
 files = [
     {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
@@ -286,7 +286,7 @@ files = [
 name = "typeguard"
 version = "2.13.3"
 description = "Run-time type checker for Python"
-optional = false
+optional = true
 python-versions = ">=3.5.3"
 files = [
     {file = "typeguard-2.13.3-py3-none-any.whl", hash = "sha256:5e3e3be01e887e7eafae5af63d1f36c849aaa94e3a0112097312aabfa16284f1"},
@@ -301,7 +301,7 @@ test = ["mypy", "pytest", "typing-extensions"]
 name = "typing-extensions"
 version = "4.11.0"
 description = "Backported and Experimental Type Hints for Python 3.8+"
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = [
     {file = "typing_extensions-4.11.0-py3-none-any.whl", hash = "sha256:c1f94d72897edaf4ce775bb7558d5b79d8126906a14ea5ed1635921406c0387a"},
@@ -312,7 +312,7 @@ files = [
 name = "zipp"
 version = "3.18.1"
 description = "Backport of pathlib-compatible object wrapper for zip files"
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = [
     {file = "zipp-3.18.1-py3-none-any.whl", hash = "sha256:206f5a15f2af3dbaee80769fb7dc6f249695e940acca08dfb2a4769fe61e538b"},
@@ -323,7 +323,10 @@ files = [
 docs = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "rst.linker (>=1.9)", "sphinx (>=3.5)", "sphinx-lint"]
 testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=2.2)", "pytest-ignore-flaky", "pytest-mypy", "pytest-ruff (>=0.2.1)"]
 
+[extras]
+terraform = ["cdktf", "cdktf-cdktf-provider-aws"]
+
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "9443af98d70f8f799cdec26845555173c3f7b0b7e13948d9db63e215b0edf5c6"
+content-hash = "deca5e4f23e65f31c549a13d8fb08b56de36fe13da73a0bedfbda5c6f0180afc"
