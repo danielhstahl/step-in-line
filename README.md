@@ -94,13 +94,26 @@ print(json.dumps(pipe.generate_step_functions()))
 
 # generate terraform json including step function code and lambdas
 # Optionally installed with `pip install step-in-line[terraform]`
-from cdktf import App
+from cdktf import App, RemoteBackend, NamedRemoteWorkspace
+
 app = App(hcl_output=True)
 instance_name = "aws_instance"
 stack = StepInLine(app, instance_name, pipe, "us-east-1")
 # write the terraform json for use by `terraform apply`
 tf_path = Path(app.outdir, "stacks", instance_name)
+
+# Terraform defaults to a local backend.  To specify a remote backend, 
+# add the following:
+RemoteBackend(
+    stack,
+    hostname='app.terraform.io',
+    organization='<YOUR_ORG>',
+    workspaces=NamedRemoteWorkspace('remoteworkspace')
+)
+
 app.synth()
+
+
 # Terraform Python SDK does not add ".json" extension; this function
 # renames the generated Terraform file and copies it to the project root.
 rename_tf_output(tf_path)
