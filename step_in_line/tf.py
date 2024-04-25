@@ -5,7 +5,6 @@ from cdktf import (
     IResolvable,
 )
 from cdktf_cdktf_provider_aws.provider import AwsProvider
-
 from cdktf_cdktf_provider_aws import (
     data_aws_subnets,
     security_group,
@@ -18,6 +17,7 @@ from cdktf_cdktf_provider_aws import (
     cloudwatch_event_target,
     cloudwatch_log_group,
 )
+from importlib import resources as impresources
 from .step import Step, step
 from .pipeline import Pipeline
 from typing import List, Union, Optional, Tuple
@@ -101,6 +101,7 @@ def generate_lambda_function(
     scope: Construct,
     name_prefix: str,
     step: Step,
+    template_file: str,
     subnet_ids: Optional[List[str]] = None,
     security_group_ids: Optional[List[str]] = None,
 ):
@@ -110,6 +111,7 @@ def generate_lambda_function(
         scope
         name_prefix (str): Prefix for lambda name to ensure uniqueness.
         step (Step): Step to create Lambda from
+        template_file (str): Location of template file to populate.  Defaults to internal template, but a custom file can be provided.
         subnet_ids (list): Optional subnet IDs.  Required if VPC is specified.
         security_group_ids (list): Option security group IDs.  Required if VPC is specified.
     """
@@ -139,9 +141,8 @@ def generate_lambda_function(
     }
 
     lambda_entry = "index"
-    lambda_filename, sha256_hash = package_lambda(
-        "step_in_line/template_lambda.py", step, lambda_entry
-    )
+
+    lambda_filename, sha256_hash = package_lambda(template_file, step, lambda_entry)
     lambda_handler = f"{lambda_entry}.lambda_handler"
 
     lambda_role = iam_role.IamRole(
@@ -344,9 +345,10 @@ class StepInLine(TerraformStack):
     def __init__(
         self,
         scope: Construct,
-        ns: str,
+        name: str,
         pipeline: Pipeline,
         region: str,
+        template_file: str = impresources.files(__package__) / "template_lambda.py",
         vpc_id: Optional[str] = None,
         subnet_filter: Optional[
             Union[IResolvable, List[data_aws_subnets.DataAwsSubnetsFilter]]
@@ -355,7 +357,19 @@ class StepInLine(TerraformStack):
             "0.0.0.0/0",
         ],
     ):
-        super().__init__(scope, ns)
+        """Initialize a StepInLine terraform stack
+
+        Args:
+            scope (Construct)
+            name (str): Unique name for Stack resource
+            pipeline (Pipeline): The pipeline to instantiate in AWS
+            region (str): AWS Region
+            template_file (str): Location of template file to populate.  Defaults to internal template, but a custom file can be provided.
+            vpc_id (Optional[str]): If Lambda needs to be in a VPC, supply the VPC ID
+            subnet_filter: If vpc_id is needed, provide a filter to access the subnets
+            outbound_cidr: Optional[List[str]]: The CIDRs to allow Lambda to access.  Only required if VPC is needed.
+        """
+        super().__init__(scope, name)
 
         AwsProvider(self, "AWS", region=region)
 
@@ -385,7 +399,7 @@ class StepInLine(TerraformStack):
         step_to_lambda_tf = {}
         for step in pipeline.get_steps():
             step_lambda = generate_lambda_function(
-                self, pipeline.name, step, subnet_ids, security_group_ids
+                self, pipeline.name, step, template_file, subnet_ids, security_group_ids
             )
             step_to_lambda_tf[step.name] = step_lambda.arn
 

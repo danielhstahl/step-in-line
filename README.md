@@ -6,6 +6,10 @@ The API is intentionally similar to the Sagemaker Pipeline API.
 
 ## Usage
 
+### Install
+`pip install step-in-line`
+
+### Example Pipeline
 ```python
 from cdktf import App
 from step_in_line.step import step
@@ -69,7 +73,7 @@ pipe = Pipeline("mytest", steps=[step_train_result], schedule="rate(2 minutes)")
 print(pipe.local_run()) # will print output of each step
 
 # to extract the step function definition
-print(pipeline.generate_step_functions().to_json())
+print(pipe.generate_step_functions().to_json())
 
 # generate terraform json including step function code and lambdas
 instance_name = "aws_instance"
@@ -91,6 +95,74 @@ terraform init
 terraform apply
 ```
 
+### Custom Lambda template
+
+The default Lambda template is the [following](./step_in_line/template_lambda.py):
+
+```python
+import pickle
+
+"{{PUT_FUNCTION_HERE}}"
+
+
+def combine_payload(event):
+    """Takes payload from event.  If previous "step" was a Parallel state,
+            this will be an array of payloads from however many steps
+            were in the Parallel state.  In this case, it combines these
+            outputs into one large payload.
+    Args:
+        event (dict): object passed to the Lambda
+    """
+    payload = {}
+    if isinstance(event, dict):
+        if "Payload" in event:
+            payload = event["Payload"]
+    else:  # then event is a list, and contains "multiple" payloads
+        for ev in event:
+            if "Payload" in ev:
+                payload = {**payload, **ev["Payload"]}
+    return payload
+
+
+# Retrieve transform job name from event and return transform job status.
+def lambda_handler(event, context):
+    print(event)
+
+    with open("args.pickle", "rb") as f:
+        args = pickle.load(f)
+
+    print(args)
+
+    with open("name.pickle", "rb") as f:
+        name = pickle.load(f)
+
+    arg_values = []
+    payload = combine_payload(event)
+    for arg in args:
+        if arg in payload:
+            # extract the output from a previous Lambda
+            arg_values.append(payload[arg])
+        else:
+            # just use the hardcoded argument
+            arg_values.append(arg)
+
+    result = "{{PUT_FUNCTION_NAME_HERE}}"(*arg_values)
+    ## all outputs from all lambdas are stored in the payload and
+    ## passed on to the next lambda(s) in the step.  This mirrors
+    ## the local_run from the `Pipeline` class.  On each subsequent
+    ## "step" this payload will grow larger.  At the final step, this
+    ## will include the output of all intermediary steps.
+    return {name: result, **payload}
+
+```
+
+You can supply a custom template like so:
+
+```python
+stack = StepInLine(app, instance_name, pipe, "us-east-1", template_file="/path/to/your/custom/template.py")
+```
+
+The `"{{PUT_FUNCTION_HERE}}"` and `"{{PUT_FUNCTION_NAME_HERE}}"` will automatically be replaced by the code of your function defined inside the `@step` decorator and the name of the function, respectively.  
 
 ## API Docs
 
