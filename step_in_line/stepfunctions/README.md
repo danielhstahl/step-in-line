@@ -1,0 +1,3 @@
+## StepFuntions
+
+This section is copy/pasted from https://github.com/aws/aws-step-functions-data-science-sdk-python/tree/main/src/stepfunctions/steps.  That library unfortunately has issues with logging and with excess dependencies, see https://github.com/aws/aws-step-functions-data-science-sdk-python/issues/193 and https://github.com/aws/aws-step-functions-data-science-sdk-python/issues/184, so I don't directly depend on it.  Since all I need is a Graph of the StepFunction pipeline, I only need the Block, Graph, and Task classes defined (and sub-classed for Lambda, Rery, Parallel, etc).

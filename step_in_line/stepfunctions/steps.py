@@ -1,0 +1,659 @@
+from .fields import Field
+from .inputs import Placeholder, StepInput
+import json
+import logging
+from enum import Enum
+
+logger = logging.getLogger(__name__)
+
+
+def to_pascalcase(text):
+    return "".join([t.title() for t in text.split("_")])
+
+
+class Block(object):
+    """
+    Base class to abstract blocks used in `Amazon States Language <https://states-language.net/spec.html>`_.
+    """
+
+    def __init__(self, **kwargs):
+        self.fields = kwargs
+        for k, v in self.fields.items():
+            if not self.is_field_allowed(k):
+                raise TypeError("Field '{field}' is not supported.".format(field=k))
+
+    def __getattr__(self, name):
+        return self.fields.get(name, None)
+
+    def is_field_allowed(self, field_name):
+        return field_name in [field.value for field in self.allowed_fields()]
+
+    def allowed_fields(self):
+        return []
+
+    def _replace_placeholders(self, params):
+        if not isinstance(params, dict):
+            return params
+        modified_parameters = {}
+        for k, v in params.items():
+            if isinstance(v, Placeholder):
+                modified_key = "{key}.$".format(key=k)
+                modified_parameters[modified_key] = v.to_jsonpath()
+            elif isinstance(v, dict):
+                modified_parameters[k] = self._replace_placeholders(v)
+            elif isinstance(v, list):
+                modified_parameters[k] = [self._replace_placeholders(i) for i in v]
+            else:
+                modified_parameters[k] = v
+        return modified_parameters
+
+    def to_dict(self):
+        result = {}
+        fields_accepted_as_none = ("result_path", "input_path", "output_path")
+        # Common fields
+        for k, v in self.fields.items():
+            if v is not None or k in fields_accepted_as_none:
+                k = to_pascalcase(k)
+                if k == to_pascalcase(Field.Parameters.value):
+                    result[k] = self._replace_placeholders(v)
+                else:
+                    result[k] = v
+
+        return result
+
+    def to_json(self, pretty=False):
+        """Serialize to a JSON formatted string.
+
+        Args:
+            pretty (bool, optional): Boolean flag set to `True` if JSON string should be prettified. `False`, otherwise. (default: False)
+
+        Returns:
+            str: JSON formatted string representation of the block.
+        """
+        if pretty:
+            return json.dumps(self.to_dict(), indent=4)
+
+        return json.dumps(self.to_dict())
+
+    def __repr__(self):
+        return "{}({})".format(
+            self.__class__.__name__,
+            ", ".join(["{}={!r}".format(k, v) for k, v in self.fields.items()]),
+        )
+
+    def __str__(self):
+        return self.to_json(pretty=True)
+
+
+class Retry(Block):
+    """
+    A class for creating a Retry block.
+    """
+
+    def __init__(self, **kwargs):
+        """Initialize a Retry block.
+
+        Args:
+            error_equals (list(str)): Non-empty list of strings, which match `Error Names <https://states-language.net/spec.html#error-names>`_. When a state reports an error, the interpreter scans through the retriers and, when the Error Name appears in the value of of a retrier’s `error_equals` field, implements the retry policy described in that retrier.
+            interval_seconds (int, optional): Positive integer representing the number of seconds before the first retry attempt. (default: 1)
+            max_attempts (int, optional): Non-negative integer representing the maximum number of retry attempts. (default: 3)
+            backoff_rate(float, optional): A number which is the multiplier that increases the retry interval on each attempt. (default: 2.0)
+        """
+        super(Retry, self).__init__(**kwargs)
+
+    def allowed_fields(self):
+        return [
+            Field.ErrorEquals,
+            Field.IntervalSeconds,
+            Field.MaxAttempts,
+            Field.BackoffRate,
+        ]
+
+
+class State(Block):
+    """
+    Base class to abstract states in `Amazon States Language <https://states-language.net/spec.html>`_.
+    """
+
+    def __init__(self, state_id, state_type, output_schema=None, **kwargs):
+        """
+        Args:
+            state_id (str): State name whose length **must be** less than or equal to 128 unicode characters. State names **must be** unique within the scope of the whole state machine.
+            state_type (str): Type of the state. (Allowed values: `'Pass'`, `'Succeed'`, `'Fail'`, `'Wait'`, `'Task'`, `'Choice'`, `'Parallel'`, `'Map'`).
+            output_schema (dict): Expected output schema for the State. This is used to validate placeholder inputs used by the next state in the state machine. (default: None)
+            comment (str, optional): Human-readable comment or description. (default: None)
+            input_path (str, optional): Path applied to the state’s raw input to select some or all of it; that selection is used by the state. (default: '$')
+            parameters (dict, optional): The value of this field becomes the effective input for the state.
+            result_path (str, optional): Path specifying the raw input’s combination with or replacement by the state’s result. (default: '$')
+            output_path (str, optional): Path applied to the state’s output after the application of `result_path`, producing the effective output which serves as the raw input for the next state. (default: '$')
+        """
+        super(State, self).__init__(**kwargs)
+        self.fields["type"] = state_type
+
+        self.state_type = state_type
+        self.state_id = state_id
+        self.output_schema = output_schema
+        self.step_output = StepInput(schema=output_schema)
+        self.retries = []
+        self.catches = []
+        self.next_step = None
+        self.in_chain = None
+
+    def __repr__(self):
+        return self.state_id + " " + super(State, self).__repr__()
+
+    def allowed_fields(self):
+        return [
+            Field.Comment,
+            Field.InputPath,
+            Field.OutputPath,
+            Field.Parameters,
+            Field.ResultPath,
+        ]
+
+    def update_parameters(self, params):
+        """
+        Update `parameters` field in the state, if supported.
+
+        Args:
+            params (dict or list): The value of this field becomes the effective input for the state.
+        """
+        if Field.Parameters in self.allowed_fields():
+            self.fields[Field.Parameters.value] = params
+
+    def next(self, next_step):
+        """
+        Specify the next state or chain to transition to.
+
+        Args:
+            next_step (State or Chain): Next state or chain to transition to.
+
+        Returns:
+            State or Chain: Next state or chain that will be transitioned to.
+        """
+        if self.type in ("Succeed", "Fail"):
+            raise ValueError(
+                "Unexpected State instance `{step}`, State type `{state_type}` does not support method `next`.".format(
+                    step=next_step, state_type=self.type
+                )
+            )
+
+        # By design, Choice states do not have the Next field. When used in a chain, the subsequent step becomes the
+        # default choice that executes if none of the specified rules match.
+        # See language spec for more info: https://states-language.net/spec.html#choice-state
+        if self.type == "Choice":
+            if self.default is not None:
+                logger.warning(
+                    f"Chaining Choice state: Overwriting {self.state_id}'s current default_choice ({self.default.state_id}) with {next_step.state_id}"
+                )
+            self.default_choice(next_step)
+            return self.default
+
+        self.next_step = next_step
+        return self.next_step
+
+    def output(self):
+        """
+        Get the placeholder collection for the State's output.
+
+        Returns:
+            StepInput: Placeholder collection representing the State's output, and consequently the input to the next state in the workflow (if one exists).
+        """
+        return self.step_output
+
+    def accept(self, visitor):
+        if visitor.is_visited(self):
+            return
+
+        visitor.visit(self)
+        if self.next_step is not None:
+            self.next_step.accept(visitor)
+        for catch in self.catches:
+            catch.next_step.accept(visitor)
+
+    def add_retry(self, retry):
+        """
+        Add a retrier or a list of retriers to the tail end of the list of retriers for the state.
+        See `Error handling in Step Functions <https://docs.aws.amazon.com/step-functions/latest/dg/concepts-error-handling.html#error-handling-retrying-after-an-error>`_ for more details.
+
+        Args:
+            retry (Retry or list(Retry)): A retrier or list of retriers to add.
+        """
+        if Field.Retry in self.allowed_fields():
+            (
+                self.retries.extend(retry)
+                if isinstance(retry, list)
+                else self.retries.append(retry)
+            )
+        else:
+            raise ValueError(
+                f"{type(self).__name__} state does not support retry field. "
+            )
+
+    def add_catch(self, catch):
+        """
+        Add a catcher or a list of catchers to the tail end of the list of catchers for the state.
+        See `Error handling in Step Functions <https://docs.aws.amazon.com/step-functions/latest/dg/concepts-error-handling.html#error-handling-fallback-states>`_ for more details.
+
+        Args:
+            catch (Catch or list(Catch): catcher or list of catchers to add.
+        """
+        if Field.Catch in self.allowed_fields():
+            (
+                self.catches.extend(catch)
+                if isinstance(catch, list)
+                else self.catches.append(catch)
+            )
+        else:
+            raise ValueError(
+                f"{type(self).__name__} state does not support catch field. "
+            )
+
+    def to_dict(self):
+        result = super(State, self).to_dict()
+
+        # Next step
+        if self.next_step is not None:
+            result[Field.Next.name] = self.next_step.state_id
+        elif self.state_type not in ("Succeed", "Fail", "Choice"):
+            result[Field.End.name] = True
+
+        # Retry and catch
+        if self.retries and self.is_field_allowed(Field.Retry.value):
+            result[Field.Retry.name] = [retry.to_dict() for retry in self.retries]
+        if self.catches and self.is_field_allowed(Field.Catch.value):
+            result[Field.Catch.name] = [catch.to_dict() for catch in self.catches]
+
+        return result
+
+
+class Task(State):
+    """
+    Task State causes the interpreter to execute the work identified by the state’s `resource` field.
+    """
+
+    def __init__(self, state_id, retry=None, catch=None, **kwargs):
+        """
+        Args:
+            state_id (str): State name whose length **must be** less than or equal to 128 unicode characters. State names **must be** unique within the scope of the whole state machine.
+            retry (Retry or list(Retry), optional): A retrier or list of retriers that define the state's retry policy. See `Error handling in Step Functions <https://docs.aws.amazon.com/step-functions/latest/dg/concepts-error-handling.html#error-handling-retrying-after-an-error>`_ for more details.
+            catch (Catch or list(Catch), optional): A catcher or list of catchers that define a fallback state. See `Error handling in Step Functions <https://docs.aws.amazon.com/step-functions/latest/dg/concepts-error-handling.html#error-handling-fallback-states>`_ for more details.
+            resource (str): A URI that uniquely identifies the specific task to execute. The States language does not constrain the URI scheme nor any other part of the URI.
+            timeout_seconds (int, optional): Positive integer specifying timeout for the state in seconds. If the state runs longer than the specified timeout, then the interpreter fails the state with a `States.Timeout` Error Name. (default: 60)
+            timeout_seconds_path (str, optional): Path specifying the state's timeout value in seconds from the state input. When resolved, the path must select a field whose value is a positive integer.
+            heartbeat_seconds (int, optional): Positive integer specifying heartbeat timeout for the state in seconds. This value should be lower than the one specified for `timeout_seconds`. If more time than the specified heartbeat elapses between heartbeats from the task, then the interpreter fails the state with a `States.Timeout` Error Name.
+            heartbeat_seconds_path (str, optional): Path specifying the state's heartbeat value in seconds from the state input. When resolved, the path must select a field whose value is a positive integer.
+            comment (str, optional): Human-readable comment or description. (default: None)
+            input_path (str, optional): Path applied to the state’s raw input to select some or all of it; that selection is used by the state. (default: '$')
+            parameters (dict, optional): The value of this field becomes the effective input for the state.
+            result_path (str, optional): Path specifying the raw input’s combination with or replacement by the state’s result. (default: '$')
+            output_path (str, optional): Path applied to the state’s output after the application of `result_path`, producing the effective output which serves as the raw input for the next state. (default: '$')
+        """
+        super(Task, self).__init__(state_id, "Task", **kwargs)
+        if self.timeout_seconds is not None and self.timeout_seconds_path is not None:
+            raise ValueError(
+                "Only one of 'timeout_seconds' or 'timeout_seconds_path' can be provided."
+            )
+
+        if (
+            self.heartbeat_seconds is not None
+            and self.heartbeat_seconds_path is not None
+        ):
+            raise ValueError(
+                "Only one of 'heartbeat_seconds' or 'heartbeat_seconds_path' can be provided."
+            )
+
+        if retry:
+            self.add_retry(retry)
+
+        if catch:
+            self.add_catch(catch)
+
+    def allowed_fields(self):
+        return [
+            Field.Comment,
+            Field.InputPath,
+            Field.OutputPath,
+            Field.Parameters,
+            Field.ResultPath,
+            Field.TimeoutSeconds,
+            Field.TimeoutSecondsPath,
+            Field.HeartbeatSeconds,
+            Field.HeartbeatSecondsPath,
+            Field.Resource,
+            Field.Retry,
+            Field.Catch,
+        ]
+
+
+class DuplicateStatesInChain(Exception):
+    pass
+
+
+class Chain(object):
+    """
+    Chain is a logical group of states, that resembles a linked list. The start state is the head of the *Chain* and the end state is the tail of the *Chain*.
+    """
+
+    def __init__(self, steps=[]):
+        """
+        Args:
+            steps (list(State), optional): List of states to be chained in-order. (default: [])
+        """
+        if not isinstance(steps, list):
+            raise TypeError(
+                "Chain takes a 'list' of steps. You provided an input that is not a list."
+            )
+        self.steps = []
+
+        steps_expanded = []
+        [
+            (
+                steps_expanded.extend(step)
+                if isinstance(step, Chain)
+                else steps_expanded.append(step)
+            )
+            for step in steps
+        ]
+        for step in steps_expanded:
+            if steps_expanded.count(step) > 1:
+                raise DuplicateStatesInChain("Duplicate states in the chain.")
+        list(map(self.append, steps_expanded))
+
+    def __iter__(self):
+        return iter(self.steps)
+
+    @property
+    def state_id(self):
+        if len(self.steps) == 0:
+            raise ValueError("The chain is empty")
+        return self.steps[0].state_id
+
+    def append(self, step):
+        """Add a state at the tail end of the chain.
+
+        Args:
+            step (State): State to insert at the tail end of the chain.
+        """
+        if len(self.steps) == 0:
+            self.steps.append(step)
+        else:
+            if step in self.steps:
+                raise DuplicateStatesInChain(
+                    "State '{step_name}' is already inside this chain. A chain cannot have duplicate states.".format(
+                        step_name=step.state_id
+                    )
+                )
+            last_step = self.steps[-1]
+            last_step.next(step)
+            self.steps.append(step)
+
+    def accept(self, visitor):
+        for step in self.steps:
+            step.accept(visitor)
+
+    def __repr__(self):
+        return "{}(steps={!r})".format(self.__class__.__name__, self.steps)
+
+
+class GraphVisitor(object):
+
+    def __init__(self):
+        self.states = {}
+
+    def is_visited(self, state):
+        return state.state_id in self.states
+
+    def visit(self, state):
+        self.states[state.state_id] = state.to_dict()
+
+
+class ValidationVisitor(object):
+
+    def __init__(self):
+        self.states = {}
+
+    def is_visited(self, state):
+        if self.states.get(state.state_id) == state.to_dict():
+            return True
+        else:
+            return False
+
+    def visit(self, state):
+        if state.state_id in self.states:
+            raise ValueError(
+                "Each state in a workflow must have a unique state id. Found duplicate state id '{}' in workflow.".format(
+                    state.state_id
+                )
+            )
+        self.states[state.state_id] = state.to_dict()
+        if state.next_step is None:
+            return
+        if (
+            not hasattr(state.next_step, "fields")
+            or Field.Parameters.value not in state.next_step.fields
+        ):
+            return
+        params = state.next_step.fields[Field.Parameters.value]
+        valid, invalid_param_name = self._validate_next_step_params(
+            params, state.step_output
+        )
+        if not valid:
+            raise ValueError(
+                "State '{state_name}' is using an illegal placeholder for the '{param_name}' parameter.".format(
+                    state_name=state.next_step.state_id, param_name=invalid_param_name
+                )
+            )
+
+    def _validate_next_step_params(self, params, step_output):
+        for k, v in params.items():
+            if isinstance(v, StepInput):
+                if v is not step_output and not step_output.contains(v):
+                    return False, k
+            elif isinstance(v, dict):
+                valid, invalid_param_name = self._validate_next_step_params(
+                    v, step_output
+                )
+                if not valid:
+                    return valid, invalid_param_name
+        return True, None
+
+
+class Graph(Block):
+
+    def __init__(self, branch, **kwargs):
+        if not isinstance(branch, (State, Chain)):
+            raise ValueError(
+                "Expected branch to be a State or a Chain, but got `{branch}`".format(
+                    branch=branch
+                )
+            )
+
+        super(Graph, self).__init__(**kwargs)
+
+        self.branch = branch
+        self.states = {}
+        self.build_graph(branch)
+
+    def allowed_fields(self):
+        return [Field.TimeoutSeconds, Field.Comment, Field.Version]
+
+    def contains(self, state):
+        return self.states.get(state.state_id, False)
+
+    def build_graph(self, state):
+        graph_visitor = GraphVisitor()
+        validation_visitor = ValidationVisitor()
+        state.accept(validation_visitor)
+        state.accept(graph_visitor)
+        self.states = graph_visitor.states
+
+    def to_dict(self):
+        result = super(Graph, self).to_dict()
+        result["StartAt"] = self.branch.state_id
+        result["States"] = self.states
+        return result
+
+
+class Parallel(State):
+    """
+    Parallel State causes parallel execution of "branches".
+
+    A Parallel state causes the interpreter to execute each branch as concurrently as possible, and wait until each branch terminates (reaches a terminal state) before processing the next state in the Chain.
+    """
+
+    def __init__(self, state_id, retry=None, catch=None, **kwargs):
+        """
+        Args:
+            state_id (str): State name whose length **must be** less than or equal to 128 unicode characters. State names **must be** unique within the scope of the whole state machine.
+            retry (Retry or list(Retry), optional): A retrier or list of retriers that define the state's retry policy. See `Error handling in Step Functions <https://docs.aws.amazon.com/step-functions/latest/dg/concepts-error-handling.html#error-handling-retrying-after-an-error>`_ for more details.
+            catch (Catch or list(Catch), optional): A catcher or list of catchers that define a fallback state. See `Error handling in Step Functions <https://docs.aws.amazon.com/step-functions/latest/dg/concepts-error-handling.html#error-handling-fallback-states>`_ for more details.
+            comment (str, optional): Human-readable comment or description. (default: None)
+            input_path (str, optional): Path applied to the state’s raw input to select some or all of it; that selection is used by the state. (default: '$')
+            parameters (dict, optional): The value of this field becomes the effective input for the state.
+            result_path (str, optional): Path specifying the raw input’s combination with or replacement by the state’s result. (default: '$')
+            output_path (str, optional): Path applied to the state’s output after the application of `result_path`, producing the effective output which serves as the raw input for the next state. (default: '$')
+        """
+        super(Parallel, self).__init__(state_id, "Parallel", **kwargs)
+        self.branches = []
+
+        if retry:
+            self.add_retry(retry)
+
+        if catch:
+            self.add_catch(catch)
+
+    def allowed_fields(self):
+        return [
+            Field.Comment,
+            Field.InputPath,
+            Field.OutputPath,
+            Field.Parameters,
+            Field.ResultPath,
+            Field.Retry,
+            Field.Catch,
+        ]
+
+    def add_branch(self, branch):
+        """
+        Add a `State` or `Chain` as a branch to the Parallel state.
+
+        Args:
+            branch (State or Chain): State or Chain to attach as a branch to the Parallel state.
+        """
+        self.branches.append(branch)
+
+    def to_dict(self):
+        result = super(Parallel, self).to_dict()
+        result[Field.Branches.name] = [
+            Graph(branch).to_dict() for branch in self.branches
+        ]
+        return result
+
+
+class Retry(Block):
+    """
+    A class for creating a Retry block.
+    """
+
+    def __init__(self, **kwargs):
+        """Initialize a Retry block.
+
+        Args:
+            error_equals (list(str)): Non-empty list of strings, which match `Error Names <https://states-language.net/spec.html#error-names>`_. When a state reports an error, the interpreter scans through the retriers and, when the Error Name appears in the value of of a retrier’s `error_equals` field, implements the retry policy described in that retrier.
+            interval_seconds (int, optional): Positive integer representing the number of seconds before the first retry attempt. (default: 1)
+            max_attempts (int, optional): Non-negative integer representing the maximum number of retry attempts. (default: 3)
+            backoff_rate(float, optional): A number which is the multiplier that increases the retry interval on each attempt. (default: 2.0)
+        """
+        super(Retry, self).__init__(**kwargs)
+
+    def allowed_fields(self):
+        return [
+            Field.ErrorEquals,
+            Field.IntervalSeconds,
+            Field.MaxAttempts,
+            Field.BackoffRate,
+        ]
+
+
+class IntegrationPattern(Enum):
+    """
+    Integration pattern enum classes for task integration resource arn builder
+    """
+
+    WaitForTaskToken = "waitForTaskToken"
+    WaitForCompletion = "sync"
+    CallAndContinue = ""
+
+
+def get_service_integration_arn(
+    service, api, integration_pattern=IntegrationPattern.CallAndContinue, version=None
+):
+    """
+    ARN builder for task integration
+    Args:
+        service (str): The service name for the service integration
+        api (str): The api of the service integration
+        integration_pattern (IntegrationPattern, optional): The integration pattern for the task. (Default: IntegrationPattern.CallAndContinue)
+        version (int, optional): The version of the resource to use. (Default: None)
+    """
+    arn = ""
+    if integration_pattern == IntegrationPattern.CallAndContinue:
+        arn = f"arn:aws:states:::{service}:{api.value}"
+    else:
+        arn = f"arn:aws:states:::{service}:{api.value}.{integration_pattern.value}"
+
+    if version:
+        arn = f"{arn}:{str(version)}"
+
+    return arn
+
+
+LAMBDA_SERVICE_NAME = "lambda"
+
+
+class LambdaApi(Enum):
+    Invoke = "invoke"
+
+
+class LambdaStep(Task):
+    """
+    Creates a Task state to invoke an AWS Lambda function. See `Invoke Lambda with Step Functions <https://docs.aws.amazon.com/step-functions/latest/dg/connect-lambda.html>`_ for more details.
+    """
+
+    def __init__(self, state_id, wait_for_callback=False, **kwargs):
+        """
+        Args:
+            state_id (str): State name whose length **must be** less than or equal to 128 unicode characters. State names **must be** unique within the scope of the whole state machine.
+            wait_for_callback(bool, optional): Boolean value set to `True` if the Task state should wait for callback to resume the operation. (default: False)
+            timeout_seconds (int, optional): Positive integer specifying timeout for the state in seconds. If the state runs longer than the specified timeout, then the interpreter fails the state with a `States.Timeout` Error Name. (default: 60)
+            timeout_seconds_path (str, optional): Path specifying the state's timeout value in seconds from the state input. When resolved, the path must select a field whose value is a positive integer.
+            heartbeat_seconds (int, optional): Positive integer specifying heartbeat timeout for the state in seconds. This value should be lower than the one specified for `timeout_seconds`. If more time than the specified heartbeat elapses between heartbeats from the task, then the interpreter fails the state with a `States.Timeout` Error Name.
+            heartbeat_seconds_path (str, optional): Path specifying the state's heartbeat value in seconds from the state input. When resolved, the path must select a field whose value is a positive integer.
+            comment (str, optional): Human-readable comment or description. (default: None)
+            input_path (str, optional): Path applied to the state’s raw input to select some or all of it; that selection is used by the state. (default: '$')
+            parameters (dict, optional): The value of this field becomes the effective input for the state.
+            result_path (str, optional): Path specifying the raw input’s combination with or replacement by the state’s result. (default: '$')
+            output_path (str, optional): Path applied to the state’s output after the application of `result_path`, producing the effective output which serves as the raw input for the next state. (default: '$')
+        """
+
+        if wait_for_callback:
+            """
+            Example resource arn: arn:aws:states:::lambda:invoke.waitForTaskToken
+            """
+
+            kwargs[Field.Resource.value] = get_service_integration_arn(
+                LAMBDA_SERVICE_NAME,
+                LambdaApi.Invoke,
+                IntegrationPattern.WaitForTaskToken,
+            )
+        else:
+            """
+            Example resource arn: arn:aws:states:::lambda:invoke
+            """
+
+            kwargs[Field.Resource.value] = get_service_integration_arn(
+                LAMBDA_SERVICE_NAME, LambdaApi.Invoke
+            )
+
+        super(LambdaStep, self).__init__(state_id, **kwargs)

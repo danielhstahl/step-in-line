@@ -1,13 +1,8 @@
-"""The Pipeline entity for workflow."""
-
-from __future__ import absolute_import
-
 import logging
 from typing import Sequence, Optional, List, Callable, Any, Tuple
 import networkx as nx
 from .step import Step
-from stepfunctions.steps import LambdaStep, Chain, Retry, Parallel, Graph
-from stepfunctions.workflow import Workflow
+from .stepfunctions.steps import LambdaStep, Chain, Retry, Parallel, Graph
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +44,7 @@ def convert_step_to_lambda(
                 backoff_rate=4.0,
             )
         )
+    logger.debug(f"Converted {step.name} to Lambda")
     return lambda_state
 
 
@@ -116,8 +112,11 @@ class Pipeline:
                     )
                 dag_lambda.append(parallel_state)
         chain = Chain(dag_lambda)
-        workflow = Workflow(name=self.name, definition=chain, role="doesnotmatter")
-        return workflow.definition
+        workflow = Graph(
+            chain
+        )  # Workflow(name=self.name, definition=chain, role="doesnotmatter")
+        logger.debug(f"Converted {self.name} to step function Workflow")
+        return workflow
 
     def set_generate_step_name(self, generate_step_name: Callable[[Step], str]):
         self.generate_step_name = generate_step_name
@@ -130,7 +129,7 @@ class Pipeline:
         outputs = {}  # contains all intermediary output
         output_arr = (
             []
-        )  # constains all intermediary output, in the shape of the steps given by the topological generations
+        )  # contains all intermediary output, in the shape of the steps given by the topological generations
         for layer in self.generate_layers():
             layer_output = []
             for step in layer:
@@ -141,6 +140,7 @@ class Pipeline:
                     else:
                         args.append(arg)
                 outputs[step.name] = step.func(*args)
+                logger.debug(f"Output from step {step.name}: {outputs[step.name]}")
                 layer_output.append((step.name, outputs[step.name]))
             output_arr.append(layer_output)
         return output_arr
