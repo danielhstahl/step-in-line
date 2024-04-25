@@ -86,7 +86,11 @@ pipe = Pipeline("mytest", steps=[step_train_result], schedule="rate(2 minutes)")
 print(pipe.local_run()) # will print output of each step
 
 # to extract the step function definition
-print(pipe.generate_step_functions().to_json())
+print(pipe.generate_step_functions())
+
+# to extract the step function definition as a string
+import json
+print(json.dumps(pipe.generate_step_functions()))
 
 # generate terraform json including step function code and lambdas
 # Optionally installed with `pip install step-in-line[terraform]`

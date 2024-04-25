@@ -96,8 +96,8 @@ class Pipeline:
         """
         return list(nx.topological_generations(self.graph))
 
-    def generate_step_functions(self) -> Graph:
-        """Create Step Function dictionary"""
+    def generate_step_functions(self) -> dict:
+        """Create Step Function workflow definition"""
         dag_lambda = []
         for index, layer in enumerate(self.generate_layers()):
             if len(layer) == 1:
@@ -116,7 +116,7 @@ class Pipeline:
             chain
         )  # Workflow(name=self.name, definition=chain, role="doesnotmatter")
         logger.debug(f"Converted {self.name} to step function Workflow")
-        return workflow
+        return workflow.to_dict()
 
     def set_generate_step_name(self, generate_step_name: Callable[[Step], str]):
         self.generate_step_name = generate_step_name
