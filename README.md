@@ -10,7 +10,7 @@ The API is intentionally similar to the Sagemaker Pipeline API.
 
 Full install (recommended):
 
-`pip install step-in-line[terraform]`
+`pip install 'step-in-line[terraform]'`
 
 Don't include Terraform related dependencies:
 

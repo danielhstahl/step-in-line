@@ -39,8 +39,11 @@ def remove_decorators(src: str) -> str:
         src (str): Source code for lambda
     """
     lines = []
+    has_function_def = False
     for line in src.splitlines():
-        if not line.lstrip().startswith("@"):
+        if line.lstrip().startswith("def"):
+            has_function_def = True
+        if has_function_def:
             lines.append(line)
     return textwrap.dedent("\n".join(lines))
 

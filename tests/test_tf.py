@@ -7,6 +7,12 @@ def test_remove_decorators_with_decorator():
     assert remove_decorators(code) == expected
 
 
+def test_remove_decorators_with_decorator_and_arguments():
+    code = '    @step(\n    hello="world"\n    )\n    def preprocess(arg1: str) -> str:\n        return "hello"'
+    expected = 'def preprocess(arg1: str) -> str:\n    return "hello"'
+    assert remove_decorators(code) == expected
+
+
 def test_remove_decorators_without_decorator():
     code = 'def preprocess(arg1: str) -> str:\n    return "hello"'
     expected = 'def preprocess(arg1: str) -> str:\n    return "hello"'
