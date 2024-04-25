@@ -40,7 +40,7 @@ class Placeholder(object):
         """
         Args:
             schema (dict, optional): Schema for the placeholder collection. (default: None)
-                                     Example below::
+                                     Example below:
                                         {
                                             'ModelName': str,
                                             'JobName': str,
