@@ -40,9 +40,33 @@ jobs:
       # And finally run tests. I'm using pytest and all my pytest config is in my `pyproject.toml`
       # so this line is super-simple. But it could be as complex as you need.
       - run: poetry run pytest
-        env:
-          AWS_DEFAULT_REGION: us-east-1
-
       - run: poetry run tf-apply # "integration" type test
-        env:
-          AWS_DEFAULT_REGION: us-east-1
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+
+      - name: Install requirements for documentation generation
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install docutils pydoctor
+
+      - name: Generate API documentation with pydoctor
+        run: |
+
+          # Run pydoctor build
+          pydoctor \
+              --project-name="step-in-line" \
+              --project-url=https://github.com/$GITHUB_REPOSITORY \
+              --html-viewsource-base=https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_SHA \
+              --make-html \
+              --html-output=./apidocs \
+              --project-base-dir="$(pwd)" \
+              --docformat=restructuredtext \
+              --intersphinx=https://docs.python.org/3/objects.inv \
+              ./step_in_line
