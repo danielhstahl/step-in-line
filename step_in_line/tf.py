@@ -99,7 +99,7 @@ def package_lambda(
     os.remove(args_file)
     os.remove(name_file)
     os.remove(lambda_python_file)
-    logger.info(f"Successfully packaged {step.name}")
+    logger.info(f"Successfully packaged files for Lambda {step.name}")
 
     return zip_name, hash_sha256
 
@@ -465,7 +465,7 @@ def rename_tf_output(path: Path):
 
 ## example, for testing
 def main():
-    logging.basicConfig()
+    logging.basicConfig(level=logging.INFO)
     app = App(hcl_output=True)
 
     @step
