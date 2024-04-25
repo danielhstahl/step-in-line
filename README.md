@@ -15,6 +15,7 @@ from cdktf import App
 from step_in_line.step import step
 from step_in_line.pipeline import Pipeline
 from step_in_line.tf import StepInLine, rename_tf_output
+from pathlib import Path
 
 app = App(hcl_output=True)
 
