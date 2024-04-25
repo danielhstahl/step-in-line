@@ -357,7 +357,7 @@ def generate_step_function(
         role_arn=stepfunction_role.arn,
         name=pipeline.name,
         type="STANDARD",
-        definition=pipeline.generate_step_functions().to_json(),
+        definition=json.dumps(pipeline.generate_step_functions()),
         logging_configuration={
             "include_execution_data": True,
             "level": "ALL",
