@@ -29,7 +29,7 @@ def test_pipeline_creates_step_dag():
     )
 
     pipe = Pipeline("mytest", steps=[step_train_result])
-    assert len(pipe.generate_step_functions().states.keys()) == 3
+    assert len(pipe.generate_step_functions()["States"].keys()) == 3
 
 
 def test_pipeline_errors_with_multiple_of_same_name():

@@ -1,9 +1,5 @@
 from constructs import Construct
-from cdktf import (
-    App,
-    TerraformStack,
-    IResolvable,
-)
+from cdktf import App, TerraformStack, IResolvable, TerraformOutput
 from cdktf_cdktf_provider_aws.provider import AwsProvider
 from cdktf_cdktf_provider_aws import (
     data_aws_subnets,
@@ -28,6 +24,10 @@ from pathlib import Path
 import inspect
 import textwrap
 from hashlib import sha256
+import logging
+import os
+
+logger = logging.getLogger(__name__)
 
 
 def remove_decorators(src: str) -> str:
@@ -42,7 +42,6 @@ def remove_decorators(src: str) -> str:
     for line in src.splitlines():
         if not line.lstrip().startswith("@"):
             lines.append(line)
-
     return textwrap.dedent("\n".join(lines))
 
 
@@ -54,6 +53,7 @@ def get_python_code(python_template_path: str, step: Step) -> str:
         step (Step): Step to place inside template
     """
     code = remove_decorators(inspect.getsource(step.func))
+    logger.debug(f"Code for {step.name}: {code}")
     with open(python_template_path, "r") as f:
         template = f.read()
     template = template.replace('"{{PUT_FUNCTION_HERE}}"', code)
@@ -75,25 +75,32 @@ def package_lambda(
         lambda_entry (str): Name of python entry file
     """
     lambda_python_file = get_python_code(python_template_path, step)
+    args_file = "args.pickle"
+    name_file = "name.pickle"
 
-    with open("args.pickle", "wb") as f:
+    with open(args_file, "wb") as f:
         pickle.dump(
             [step.name if isinstance(step, Step) else step for step in step.args], f
         )
 
-    with open("name.pickle", "wb") as f:
+    with open(name_file, "wb") as f:
         pickle.dump(step.name, f)
 
     zip_name = f"{step.name}.zip"
 
     zf = zipfile.ZipFile(zip_name, mode="w")
     zf.write(lambda_python_file, arcname=f"{lambda_entry}.py")
-    zf.write("args.pickle")
-    zf.write("name.pickle")
+    zf.write(args_file)
+    zf.write(name_file)
     zf.close()
     with open(zip_name, "rb") as f:
         data = f.read()
         hash_sha256 = sha256(data).hexdigest()
+    os.remove(args_file)
+    os.remove(name_file)
+    os.remove(lambda_python_file)
+    logger.info(f"Successfully packaged files for Lambda {step.name}")
+
     return zip_name, hash_sha256
 
 
@@ -105,7 +112,9 @@ def generate_lambda_function(
     subnet_ids: Optional[List[str]] = None,
     security_group_ids: Optional[List[str]] = None,
 ):
-    """Creates Terraform resource for Lambda
+    """Creates Terraform resource for Lambda.  Automatically
+        adds an environment variable "VAULT_LAMBDA_ROLE" for
+        easier Vault integration.
 
     Args:
         scope
@@ -151,7 +160,7 @@ def generate_lambda_function(
         assume_role_policy=json.dumps(role),
         name_prefix=step.name,
     )
-    stepfunction_policy = iam_policy.IamPolicy(
+    cloudwatch_policy = iam_policy.IamPolicy(
         scope,
         f"{step.name}policy",
         policy=json.dumps(policy),
@@ -159,15 +168,28 @@ def generate_lambda_function(
     lambda_policy_attachment = iam_role_policy_attachment.IamRolePolicyAttachment(
         scope,
         f"{step.name}policyattachment",
-        policy_arn=stepfunction_policy.arn,
+        policy_arn=cloudwatch_policy.arn,
         role=lambda_role.name,
     )
+    for index, additional_policy in enumerate(step.additional_policies):
+        local_policy = iam_policy.IamPolicy(
+            scope,
+            f"{step.name}_{index}_policy",
+            policy=additional_policy,
+        )
+        local_policy_attachment = iam_role_policy_attachment.IamRolePolicyAttachment(
+            scope,
+            f"{step.name}_{index}policyattachment",
+            policy_arn=local_policy.arn,
+            role=lambda_role.name,
+        )
     vpc_config = (
         None
         if subnet_ids is None
         else {"subnet_ids": subnet_ids, "security_group_ids": security_group_ids}
     )
-    return lambda_function.LambdaFunction(
+    TerraformOutput(scope, f"{step.name}_lambda_role_arn", value=lambda_role.arn)
+    lambda_f = lambda_function.LambdaFunction(
         scope,
         step.name,
         function_name=f"{name_prefix}_{step.name}",
@@ -180,8 +202,12 @@ def generate_lambda_function(
         vpc_config=vpc_config,
         layers=step.layers,
         source_code_hash=sha256_hash,
-        environment=step.env_variables,
+        environment={
+            "variables": {**step.env_variables, "VAULT_AUTH_ROLE": lambda_role.name}
+        },
     )
+    TerraformOutput(scope, f"{step.name}_lambda_arn", value=lambda_f.arn)
+    return lambda_f
 
 
 def generate_event_bridge(scope: Construct, pipeline: Pipeline, step_function_arn: str):
@@ -325,13 +351,13 @@ def generate_step_function(
         policy_arn=stepfunction_policy.arn,
         role=stepfunction_role.name,
     )
-    return sfn_state_machine.SfnStateMachine(
+    step_function = sfn_state_machine.SfnStateMachine(
         scope,
         pipeline.name,
         role_arn=stepfunction_role.arn,
         name=pipeline.name,
         type="STANDARD",
-        definition=pipeline.generate_step_functions().to_json(),
+        definition=json.dumps(pipeline.generate_step_functions()),
         logging_configuration={
             "include_execution_data": True,
             "level": "ALL",
@@ -339,6 +365,8 @@ def generate_step_function(
         },
         tracing_configuration={"enabled": True},
     )
+    TerraformOutput(scope, f"{pipeline.name}_stepfunction_arn", value=step_function.arn)
+    return step_function
 
 
 class StepInLine(TerraformStack):
@@ -395,20 +423,31 @@ class StepInLine(TerraformStack):
 
             subnet_ids = subnets.ids
             security_group_ids = [security_group_for_lambda.id]
+            logger.info(f"Successfully generated VPC Terraform resources")
 
         step_to_lambda_tf = {}
         for step in pipeline.get_steps():
             step_lambda = generate_lambda_function(
-                self, pipeline.name, step, template_file, subnet_ids, security_group_ids
+                self,
+                pipeline.name,
+                step,
+                template_file,
+                subnet_ids,
+                security_group_ids,
             )
             step_to_lambda_tf[step.name] = step_lambda.arn
+            logger.info(
+                f"Successfully generated Lambda Terraform resource for step {step.name}"
+            )
 
         pipeline.set_generate_step_name(lambda s: step_to_lambda_tf[s.name])
         step_function = generate_step_function(
             self, pipeline, region, list(step_to_lambda_tf.values())
         )
+        logger.info(f"Successfully generated Step Function Terraform resource")
         if pipeline.schedule is not None:
             generate_event_bridge(self, pipeline, step_function.arn)
+            logger.info(f"Successfully generated Event Bridge Terraform resource")
 
 
 def rename_tf_output(path: Path):
@@ -426,6 +465,7 @@ def rename_tf_output(path: Path):
 
 ## example, for testing
 def main():
+    logging.basicConfig(level=logging.INFO)
     app = App(hcl_output=True)
 
     @step
@@ -452,6 +492,7 @@ def main():
     )
     instance_name = "aws_instance"
     pipe = Pipeline("mytest", steps=[step_train_result], schedule="rate(2 minutes)")
+    print(pipe.generate_step_functions())
     stack = StepInLine(app, instance_name, pipe, "us-east-1")
     tf_path = Path(app.outdir, "stacks", instance_name)
     app.synth()

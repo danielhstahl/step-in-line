@@ -32,10 +32,10 @@ jobs:
           path: .venv
           key: pydeps-${{ hashFiles('**/poetry.lock') }}
 
-      - run: poetry install --no-interaction --no-root
+      - run: poetry install --no-interaction --no-root --all-extras
         if: steps.cache-deps.outputs.cache-hit != 'true'
 
-      - run: poetry install --no-interaction
+      - run: poetry install --no-interaction --all-extras
 
       # And finally run tests. I'm using pytest and all my pytest config is in my `pyproject.toml`
       # so this line is super-simple. But it could be as complex as you need.

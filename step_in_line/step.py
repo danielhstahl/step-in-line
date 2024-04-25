@@ -1,7 +1,4 @@
-from __future__ import absolute_import
-
 from typing import List, Optional, Callable, Any, Dict
-
 from functools import wraps
 
 
@@ -17,6 +14,7 @@ class Step:
         memory_size: int = 512,
         description: Optional[str] = None,
         retry_count: int = 0,
+        policies: List[str] = [],
         layers: List[str] = [],
         env_variables: Dict[str, str] = {},  # to pass in to lambda
         depends_on: Optional[List["Step"]] = None,
@@ -31,6 +29,7 @@ class Step:
             memory_size (int): Megabytes of memory for the lambda.  Defaults to 512.
             description (str): The description of the `Step`.
             retry_count (int): Number of times to retry a failure
+            policies (List[str]): IAM policies, in JSON, to provide to the Lambda
             layers (list): the ARNs of layers to add to the lambda function
             env_variables (dict): environment variables to pass to lambda function
             depends_on (List[Step]): The list of Steps that the current `Step` depends on.
@@ -44,6 +43,9 @@ class Step:
         self.memory_size = memory_size
         self.python_runtime = python_runtime
         self.env_variables = env_variables
+        self.additional_policies = (
+            policies  # by default, Lambda gets minimal permission
+        )
         if depends_on is not None:
             self._depends_on = depends_on
         else:
@@ -86,6 +88,7 @@ def step(
     layers: Optional[List[str]] = None,
     python_runtime: str = "python3.10",
     memory_size: int = 512,
+    policies: List[str] = [],
     retry_count: int = 0,
     env_variables: Dict[str, str] = {}
 ):
@@ -101,6 +104,7 @@ def step(
         layers (list): Lambda layers
         python_runtime (str): Lambda runtime.
         memory_size (int): Megabytes of memory for the lambda.  Defaults to 512.
+        policies (List[str]): IAM policies, in JSON, to provide to the Lambda
         retry_count (int): number of retries to attempt.  Defaults to 0 (no retries).
         env_variables (dict): environment variables to pass to lambda function
 
@@ -115,6 +119,7 @@ def step(
                 if isinstance(arg, Step):
                     depends_on[id(arg)] = arg
                 arg_list.append(arg)
+
             # setup default values for name, display_name and description if not provided
 
             _name = func.__name__ if not name else name
@@ -130,6 +135,8 @@ def step(
                 retry_count=retry_count,
                 layers=layers,
                 python_runtime=python_runtime,
+                memory_size=memory_size,
+                policies=policies,
                 func=func,
                 args=arg_list,
                 env_variables=env_variables,

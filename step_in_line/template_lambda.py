@@ -24,12 +24,9 @@ def combine_payload(event):
 
 # Retrieve transform job name from event and return transform job status.
 def lambda_handler(event, context):
-    print(event)
 
     with open("args.pickle", "rb") as f:
         args = pickle.load(f)
-
-    print(args)
 
     with open("name.pickle", "rb") as f:
         name = pickle.load(f)
