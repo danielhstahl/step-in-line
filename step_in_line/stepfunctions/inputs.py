@@ -40,14 +40,6 @@ class Placeholder(object):
         """
         Args:
             schema (dict, optional): Schema for the placeholder collection. (default: None)
-                                     Example below:
-                                        {
-                                            'ModelName': str,
-                                            'JobName': str,
-                                            'Hyperparameters': {
-                                                'tol': float
-                                            }
-                                        }
 
         Keyword Args:
             name (str, optional): Name of the placeholder variable. (default: None)
@@ -160,9 +152,9 @@ class Placeholder(object):
 
         Returns:
             ValidationResult: Named tuple with the keys:
-                                `valid` (Boolean): Representing the result of validation ,
-                                `keys_missing` (list(str)): List of keys missing in the input ,
-                                `keys_type_mismatch` (list(str), type, type): List of tuples with key name, expected type, and provided type.
+                                "valid" (Boolean): Representing the result of validation ,
+                                "keys_missing" (list(str)): List of keys missing in the input ,
+                                "keys_type_mismatch" (list(str), type, type): List of tuples with key name, expected type, and provided type.
         """
         if input is None:
             return False, None, None
